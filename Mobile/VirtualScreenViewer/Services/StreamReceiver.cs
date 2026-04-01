@@ -65,7 +65,7 @@ public class StreamReceiver : IDisposable
                 {
                     FrameReceived?.Invoke(this, new FrameReceivedEventArgs
                     {
-                        ImageData = packet.PayLoad,
+                        ImageData = packet.Payload,
                         Width = packet.Width,
                         Height = packet.Height,
                         SequenceNumber = packet.SequenceNumber,

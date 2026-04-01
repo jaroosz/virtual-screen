@@ -2,7 +2,7 @@
 
 public enum PacketType : byte
 {
-    VideFrame = 1,
+    VideoFrame = 1,
     ConnectionRequest = 2,
     ConnectionResponse = 3,
     Heartbeat = 4
@@ -15,7 +15,7 @@ public class StreamPacket
     public long Timestamp { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
-    public byte[] PayLoad { get; set; } = Array.Empty<byte>();
+    public byte[] Payload { get; set; } = Array.Empty<byte>();
 
     // serialize to byte array for UDP
     public byte[] ToBytes()
@@ -28,8 +28,8 @@ public class StreamPacket
         writer.Write(Timestamp);
         writer.Write(Width);
         writer.Write(Height);
-        writer.Write(PayLoad.Length);
-        writer.Write(PayLoad);
+        writer.Write(Payload.Length);
+        writer.Write(Payload);
 
         return ms.ToArray();
     }
@@ -48,7 +48,7 @@ public class StreamPacket
                 Timestamp = reader.ReadInt64(),
                 Width = reader.ReadInt32(),
                 Height = reader.ReadInt32(),
-                PayLoad = reader.ReadBytes(reader.ReadInt32())
+                Payload = reader.ReadBytes(reader.ReadInt32())
             };
         }
         catch

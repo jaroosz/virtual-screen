@@ -9,7 +9,7 @@ static extern bool SetProcessDpiAwarenessContext(int value);
 
 SetProcessDpiAwarenessContext(-4);
 
-var port = 8080;
+var port = 5555;
 var portArg = args.FirstOrDefault(a => a.StartsWith("--port="));
 if (portArg != null && int.TryParse(portArg["--port=".Length..], out var parsed))
     port = parsed;
@@ -19,7 +19,7 @@ var driverPath = Path.Combine(AppContext.BaseDirectory, "drivers");
 var controller = new AppController(
     new DriverManager(driverPath),
     new DxgiScreenCapture(),
-    new MjpegStreamServer());
+    new UdpStreamServer());
 
 var thread = new Thread(() =>
 {
