@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VirtualScreen.Core\VirtualScreen.Core.csproj" />
+	<ProjectReference Include="..\..\Mobile\VirtualScreenViewer.Core\VirtualScreenViewer.Core.csproj" />
   </ItemGroup>
 
 </Project>
