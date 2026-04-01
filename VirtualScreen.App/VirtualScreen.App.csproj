@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	<OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+	<TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VirtualScreen.Capture\VirtualScreen.Capture.csproj" />
+    <ProjectReference Include="..\VirtualScreen.Core\VirtualScreen.Core.csproj" />
+    <ProjectReference Include="..\VirtualScreen.Driver\VirtualScreen.Driver.csproj" />
+    <ProjectReference Include="..\VisualScreen.Streaming\VirtualScreen.Streaming.csproj" />
+  </ItemGroup>
+
+</Project>
