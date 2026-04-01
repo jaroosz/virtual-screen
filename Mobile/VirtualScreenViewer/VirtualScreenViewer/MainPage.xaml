@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="VirtualScreenViewer.MainPage"
+             Title="Virtual Screen Viewer">
+
+    <Grid RowDefinitions="Auto,*" Padding="10">
+
+        <!-- Connection Panel -->
+        <VerticalStackLayout Grid.Row="0" Spacing="10" Padding="10">
+            <Label Text="Desktop IP Address:" FontSize="14"/>
+            <Entry x:Name="IpAddressEntry" 
+                   Text="192.168.1.100"
+                   Placeholder="Enter desktop IP"
+                   Keyboard="Numeric"/>
+
+            <Button x:Name="ConnectButton"
+                    Text="Connect"
+                    Clicked="OnConnectClicked"
+                    HorizontalOptions="Fill"/>
+
+            <Label x:Name="StatusLabel" 
+                   Text="Not connected"
+                   FontSize="12"
+                   HorizontalTextAlignment="Center"/>
+        </VerticalStackLayout>
+
+        <!-- Video Display -->
+        <Border Grid.Row="1" 
+                StrokeThickness="2"
+                Stroke="Gray"
+                Margin="0,10,0,0">
+            <Image x:Name="VideoImage"
+                   Aspect="AspectFit"
+                   BackgroundColor="Black"/>
+        </Border>
+
+    </Grid>
+
+</ContentPage>
