@@ -6,13 +6,12 @@
 
     <Grid RowDefinitions="Auto,*" Padding="10">
 
-        <!-- Connection Panel -->
         <VerticalStackLayout Grid.Row="0" Spacing="10" Padding="10">
             <Label Text="Desktop IP Address:" FontSize="14"/>
             <Entry x:Name="IpAddressEntry" 
                    Text="192.168.1.100"
                    Placeholder="Enter desktop IP"
-                   Keyboard="Numeric"/>
+                   Keyboard="Default"/>
 
             <Button x:Name="ConnectButton"
                     Text="Connect"
@@ -25,7 +24,6 @@
                    HorizontalTextAlignment="Center"/>
         </VerticalStackLayout>
 
-        <!-- Video Display -->
         <Border Grid.Row="1" 
                 StrokeThickness="2"
                 Stroke="Gray"

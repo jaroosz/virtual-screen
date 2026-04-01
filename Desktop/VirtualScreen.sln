@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreen.Streaming", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreen.App", "VirtualScreen.App\VirtualScreen.App.csproj", "{C6D7DA26-F453-4948-AF90-E9A8E447433F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreenViewer.Core", "..\Mobile\VirtualScreenViewer.Core\VirtualScreenViewer.Core.csproj", "{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{C6D7DA26-F453-4948-AF90-E9A8E447433F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C6D7DA26-F453-4948-AF90-E9A8E447433F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C6D7DA26-F453-4948-AF90-E9A8E447433F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

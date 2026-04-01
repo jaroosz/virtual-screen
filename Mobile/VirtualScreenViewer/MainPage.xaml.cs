@@ -1,6 +1,4 @@
-﻿using System.Net;
-using VirtualScreenViewer.Services;
-using static VirtualScreenViewer.Services.StreamReceiver;
+﻿using VirtualScreenViewer.Services;
 
 namespace VirtualScreenViewer;
 
@@ -18,7 +16,7 @@ public partial class MainPage : ContentPage
         _receiver.ConnectionStatusChanged += OnConnectionStatusChanged;
     }
 
-    private async void OnConnectionClicked(object sender, EventArgs e)
+    private async void OnConnectClicked(object sender, EventArgs e)
     {
         if (_receiver.IsConnected)
         {

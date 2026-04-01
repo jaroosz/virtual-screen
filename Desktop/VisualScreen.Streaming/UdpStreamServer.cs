@@ -52,21 +52,20 @@ public class UdpStreamServer : IStreamServer
 
         try
         {
-            // Convert raw BGRA to JPEG (keep existing logic from MjpegStreamServer)
             var jpegData = ConvertToJpeg(frameData, width, height);
 
-            var packet = new StreamPacket
-            {
-                Type = PacketType.VideoFrame,
-                SequenceNumber = _sequenceNumber++,
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                Width = width,
-                Height = height,
-                Payload = jpegData
-            };
+            var fragments = StreamPacket.CreateFragments(jpegData, width, height, _sequenceNumber++);
 
-            var data = packet.ToBytes();
-            _udpServer.Send(data, data.Length, _clientEndpoint);
+            foreach (var fragment in fragments)
+            {
+                var data = fragment.ToBytes();
+                _udpServer.Send(data, data.Length, _clientEndpoint);
+
+                if (fragments.Count > 1)
+                {
+                    Thread.Sleep(1);
+                }
+            }
         }
         catch (Exception ex)
         {
