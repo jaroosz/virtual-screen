@@ -1,0 +1,1642 @@
+﻿using System.Runtime.InteropServices;
+
+namespace VirtualScreen.Encoding;
+
+/// <summary>
+/// P/Invoke declarations for NVIDIA Video Encoder API (NVENC)
+/// Based on nvEncodeAPI.h v12.2
+/// Struct sizes validated against C++ reference (64-bit):
+///   GUID                                  =    16 bytes
+///   NV_ENC_CLOCK_TIMESTAMP_SET            =     8 bytes
+///   NV_ENC_TIME_CODE                      =    32 bytes
+///   NV_ENC_QP                             =    12 bytes
+///   NV_ENC_RC_PARAMS                      =   128 bytes
+///   NV_ENC_CONFIG_H264_VUI_PARAMETERS     =   112 bytes
+///   NV_ENC_CONFIG_H264                    =  1792 bytes
+///   NV_ENC_CONFIG_HEVC                    =  1560 bytes
+///   NV_ENC_CODEC_CONFIG                   =  1792 bytes (union, largest is H264)
+///   NV_ENC_CONFIG                         =  3584 bytes
+///   NV_ENC_PRESET_CONFIG                  =  5128 bytes
+///   NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS  =  1552 bytes
+///   NV_ENC_INITIALIZE_PARAMS              =  1800 bytes
+///   NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE =  16 bytes
+///   NV_ENC_REGISTER_RESOURCE              =  1536 bytes
+///   NV_ENC_MAP_INPUT_RESOURCE             =  1544 bytes
+///   NV_ENC_CREATE_INPUT_BUFFER            =   776 bytes
+///   NV_ENC_LOCK_INPUT_BUFFER              =  1544 bytes
+///   NV_ENC_PIC_PARAMS                     =  3360 bytes
+///   NV_ENC_CODEC_PIC_PARAMS               =  1544 bytes (union)
+///   NV_ENC_PIC_PARAMS_H264                =  1536 bytes
+///   NV_ENC_PIC_PARAMS_HEVC                =  1536 bytes
+///   NV_ENC_PIC_PARAMS_AV1                 =  1544 bytes
+///   NV_ENC_PIC_PARAMS_H264_EXT            =   128 bytes (union)
+///   NV_ENC_PIC_PARAMS_MVC                 =   128 bytes
+///   NV_ENC_LOCK_BITSTREAM                 =  1544 bytes
+///   NV_ENC_CREATE_BITSTREAM_BUFFER        =   776 bytes
+///   NV_ENCODE_API_FUNCTION_LIST           =  2552 bytes
+///   NV_ENC_CONFIG.rcParams                =    40 (expected 44 in old docs)
+///   NV_ENC_CONFIG.encodeCodecConfig       =   168 (expected 172 in old docs)
+///   NV_ENC_INITIALIZE_PARAMS.encodeConfig =    88 (expected 60 in old docs)
+///   NV_ENC_PIC_PARAMS.inputBuffer         =    40 (expected 48 in old docs)
+///   NV_ENC_PIC_PARAMS.outputBitstream     =    48 (expected 56 in old docs)
+/// Architecture: 64-bit (sizeof(void*) = 8 bytes)
+/// </summary>
+internal static unsafe class NvEncodeAPI
+{
+    private const string NvEncDll = "nvEncodeAPI64.dll";
+
+    // ═══════════════════════════════════════════════════════════════
+    // NVENC Enums
+    // ═══════════════════════════════════════════════════════════════
+
+    public enum NV_ENC_DEVICE_TYPE : uint
+    {
+        NV_ENC_DEVICE_TYPE_DIRECTX = 0,
+        NV_ENC_DEVICE_TYPE_CUDA = 1,
+        NV_ENC_DEVICE_TYPE_OPENGL = 2,
+    }
+
+    public enum NV_ENC_BUFFER_FORMAT : uint
+    {
+        NV_ENC_BUFFER_FORMAT_UNDEFINED = 0,
+        NV_ENC_BUFFER_FORMAT_NV12 = 0x00000001,
+        NV_ENC_BUFFER_FORMAT_YV12 = 0x00000010,
+        NV_ENC_BUFFER_FORMAT_IYUV = 0x00000100,
+        NV_ENC_BUFFER_FORMAT_YUV444 = 0x00001000,
+        NV_ENC_BUFFER_FORMAT_YUV420_10BIT = 0x00010000,
+        NV_ENC_BUFFER_FORMAT_YUV444_10BIT = 0x00100000,
+        NV_ENC_BUFFER_FORMAT_ARGB = 0x01000000,
+        NV_ENC_BUFFER_FORMAT_ARGB10 = 0x02000000,
+        NV_ENC_BUFFER_FORMAT_AYUV = 0x04000000,
+        NV_ENC_BUFFER_FORMAT_ABGR = 0x10000000,
+        NV_ENC_BUFFER_FORMAT_ABGR10 = 0x20000000,
+        NV_ENC_BUFFER_FORMAT_U8 = 0x40000000,
+    }
+
+    public enum NV_ENC_PIC_TYPE : uint
+    {
+        NV_ENC_PIC_TYPE_P = 0x0,
+        NV_ENC_PIC_TYPE_B = 0x01,
+        NV_ENC_PIC_TYPE_I = 0x02,
+        NV_ENC_PIC_TYPE_IDR = 0x03,
+        NV_ENC_PIC_TYPE_BI = 0x04,
+        NV_ENC_PIC_TYPE_SKIPPED = 0x05,
+        NV_ENC_PIC_TYPE_INTRA_REFRESH = 0x06,
+        NV_ENC_PIC_TYPE_NONREF_P = 0x07,
+        NV_ENC_PIC_TYPE_SWITCH = 0x08,
+        NV_ENC_PIC_TYPE_UNKNOWN = 0xFF
+    }
+
+    public enum NV_ENC_TUNING_INFO : uint
+    {
+        NV_ENC_TUNING_INFO_UNDEFINED = 0,
+        NV_ENC_TUNING_INFO_HIGH_QUALITY = 1,
+        NV_ENC_TUNING_INFO_LOW_LATENCY = 2,
+        NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY = 3,
+        NV_ENC_TUNING_INFO_LOSSLESS = 4,
+        NV_ENC_TUNING_INFO_ULTRA_HIGH_QUALITY = 5,
+        NV_ENC_TUNING_INFO_COUNT
+    }
+
+    public enum NV_ENC_PARAMS_RC_MODE : uint
+    {
+        NV_ENC_PARAMS_RC_CONSTQP = 0,
+        NV_ENC_PARAMS_RC_VBR = 1,
+        NV_ENC_PARAMS_RC_CBR = 2,
+        NV_ENC_PARAMS_RC_CBR_LOWDELAY_HQ = 8,
+        NV_ENC_PARAMS_RC_CBR_HQ = 16,
+        NV_ENC_PARAMS_RC_VBR_HQ = 32
+    }
+
+    public enum NV_ENC_MULTI_PASS : uint
+    {
+        NV_ENC_MULTI_PASS_DISABLED = 0,
+        NV_ENC_TWO_PASS_QUARTER_RESOLUTION = 1,
+        NV_ENC_TWO_PASS_FULL_RESOLUTION = 2
+    }
+
+    public enum NV_ENC_EMPHASIS_MAP_LEVEL : uint
+    {
+        NV_ENC_EMPHASIS_MAP_LEVEL_0 = 0x0,
+        NV_ENC_EMPHASIS_MAP_LEVEL_1 = 0x1,
+        NV_ENC_EMPHASIS_MAP_LEVEL_2 = 0x2,
+        NV_ENC_EMPHASIS_MAP_LEVEL_3 = 0x3,
+        NV_ENC_EMPHASIS_MAP_LEVEL_4 = 0x4,
+        NV_ENC_EMPHASIS_MAP_LEVEL_5 = 0x5
+    }
+
+    public enum NV_ENC_QP_MAP_MODE : uint
+    {
+        NV_ENC_QP_MAP_DISABLED = 0,
+        NV_ENC_QP_MAP_EMPHASIS = 1,
+        NV_ENC_QP_MAP_DELTA = 2,
+        NV_ENC_QP_MAP = 3
+    }
+
+    public enum NV_ENC_HEVC_CUSIZE : uint
+    {
+        NV_ENC_HEVC_CUSIZE_AUTOSELECT = 0,
+        NV_ENC_HEVC_CUSIZE_8x8 = 1,
+        NV_ENC_HEVC_CUSIZE_16x16 = 2,
+        NV_ENC_HEVC_CUSIZE_32x32 = 3,
+        NV_ENC_HEVC_CUSIZE_64x64 = 4,
+    }
+
+    public enum NV_ENC_BFRAME_REF_MODE : uint
+    {
+        NV_ENC_BFRAME_REF_MODE_DISABLED = 0x0,
+        NV_ENC_BFRAME_REF_MODE_EACH = 0x1,
+        NV_ENC_BFRAME_REF_MODE_MIDDLE = 0x2,
+    }
+
+    public enum NV_ENC_NUM_REF_FRAMES : uint
+    {
+        NV_ENC_NUM_REF_FRAMES_AUTOSELECT = 0,
+        NV_ENC_NUM_REF_FRAMES_1 = 1,
+        NV_ENC_NUM_REF_FRAMES_2 = 2,
+        NV_ENC_NUM_REF_FRAMES_3 = 3,
+        NV_ENC_NUM_REF_FRAMES_4 = 4,
+        NV_ENC_NUM_REF_FRAMES_5 = 5,
+        NV_ENC_NUM_REF_FRAMES_6 = 6,
+        NV_ENC_NUM_REF_FRAMES_7 = 7,
+    }
+
+    public enum NV_ENC_H264_ENTROPY_CODING_MODE : uint
+    {
+        NV_ENC_H264_ENTROPY_CODING_MODE_AUTOSELECT = 0x0,
+        NV_ENC_H264_ENTROPY_CODING_MODE_CABAC = 0x1,
+        NV_ENC_H264_ENTROPY_CODING_MODE_CAVLC = 0x2
+    }
+
+    public enum NV_ENC_H264_BDIRECT_MODE : uint
+    {
+        NV_ENC_H264_BDIRECT_MODE_AUTOSELECT = 0x0,
+        NV_ENC_H264_BDIRECT_MODE_DISABLE = 0x1,
+        NV_ENC_H264_BDIRECT_MODE_TEMPORAL = 0x2,
+        NV_ENC_H264_BDIRECT_MODE_SPATIAL = 0x3
+    }
+
+    public enum NV_ENC_H264_FMO_MODE : uint
+    {
+        NV_ENC_H264_FMO_AUTOSELECT = 0x0,
+        NV_ENC_H264_FMO_ENABLE = 0x1,
+        NV_ENC_H264_FMO_DISABLE = 0x2,
+    }
+
+    public enum NV_ENC_H264_ADAPTIVE_TRANSFORM_MODE : uint
+    {
+        NV_ENC_H264_ADAPTIVE_TRANSFORM_AUTOSELECT = 0x0,
+        NV_ENC_H264_ADAPTIVE_TRANSFORM_DISABLE = 0x1,
+        NV_ENC_H264_ADAPTIVE_TRANSFORM_ENABLE = 0x2,
+    }
+
+    public enum NV_ENC_STEREO_PACKING_MODE : uint
+    {
+        NV_ENC_STEREO_PACKING_MODE_NONE = 0x0,
+        NV_ENC_STEREO_PACKING_MODE_CHECKERBOARD = 0x1,
+        NV_ENC_STEREO_PACKING_MODE_COLINTERLEAVE = 0x2,
+        NV_ENC_STEREO_PACKING_MODE_ROWINTERLEAVE = 0x3,
+        NV_ENC_STEREO_PACKING_MODE_SIDEBYSIDE = 0x4,
+        NV_ENC_STEREO_PACKING_MODE_TOPBOTTOM = 0x5,
+        NV_ENC_STEREO_PACKING_MODE_FRAMESEQ = 0x6
+    }
+
+    public enum NV_ENC_TEMPORAL_FILTER_LEVEL : uint
+    {
+        NV_ENC_TEMPORAL_FILTER_LEVEL_0 = 0,
+        NV_ENC_TEMPORAL_FILTER_LEVEL_4 = 4,
+    }
+
+    public enum NV_ENC_CAPS : uint
+    {
+        NV_ENC_CAPS_NUM_MAX_BFRAMES,
+        NV_ENC_CAPS_SUPPORTED_RATECONTROL_MODES,
+        NV_ENC_CAPS_SUPPORT_FIELD_ENCODING,
+        NV_ENC_CAPS_SUPPORT_MONOCHROME,
+        NV_ENC_CAPS_SUPPORT_FMO,
+        NV_ENC_CAPS_SUPPORT_QPELMV,
+        NV_ENC_CAPS_SUPPORT_BDIRECT_MODE,
+        NV_ENC_CAPS_SUPPORT_CABAC,
+        NV_ENC_CAPS_SUPPORT_ADAPTIVE_TRANSFORM,
+        NV_ENC_CAPS_SUPPORT_STEREO_MVC,
+        NV_ENC_CAPS_NUM_MAX_TEMPORAL_LAYERS,
+        NV_ENC_CAPS_SUPPORT_HIERARCHICAL_PFRAMES,
+        NV_ENC_CAPS_SUPPORT_HIERARCHICAL_BFRAMES,
+        NV_ENC_CAPS_LEVEL_MAX,
+        NV_ENC_CAPS_LEVEL_MIN,
+        NV_ENC_CAPS_SEPARATE_COLOUR_PLANE,
+        NV_ENC_CAPS_WIDTH_MAX,
+        NV_ENC_CAPS_HEIGHT_MAX,
+        NV_ENC_CAPS_SUPPORT_TEMPORAL_SVC,
+        NV_ENC_CAPS_SUPPORT_DYN_RES_CHANGE,
+        NV_ENC_CAPS_SUPPORT_DYN_BITRATE_CHANGE,
+        NV_ENC_CAPS_SUPPORT_DYN_FORCE_CONSTQP,
+        NV_ENC_CAPS_SUPPORT_DYN_RCMODE_CHANGE,
+        NV_ENC_CAPS_SUPPORT_SUBFRAME_READBACK,
+        NV_ENC_CAPS_SUPPORT_CONSTRAINED_ENCODING,
+        NV_ENC_CAPS_SUPPORT_INTRA_REFRESH,
+        NV_ENC_CAPS_SUPPORT_CUSTOM_VBV_BUF_SIZE,
+        NV_ENC_CAPS_SUPPORT_DYNAMIC_SLICE_MODE,
+        NV_ENC_CAPS_SUPPORT_REF_PIC_INVALIDATION,
+        NV_ENC_CAPS_PREPROC_SUPPORT,
+        NV_ENC_CAPS_ASYNC_ENCODE_SUPPORT,
+        NV_ENC_CAPS_MB_NUM_MAX,
+        NV_ENC_CAPS_MB_PER_SEC_MAX,
+        NV_ENC_CAPS_SUPPORT_YUV444_ENCODE,
+        NV_ENC_CAPS_SUPPORT_LOSSLESS_ENCODE,
+        NV_ENC_CAPS_SUPPORT_SAO,
+        NV_ENC_CAPS_SUPPORT_MEONLY_MODE,
+        NV_ENC_CAPS_SUPPORT_LOOKAHEAD,
+        NV_ENC_CAPS_SUPPORT_TEMPORAL_AQ,
+        NV_ENC_CAPS_SUPPORT_10BIT_ENCODE,
+        NV_ENC_CAPS_NUM_MAX_LTR_FRAMES,
+        NV_ENC_CAPS_SUPPORT_WEIGHTED_PREDICTION,
+        NV_ENC_CAPS_DYNAMIC_QUERY_ENCODER_CAPACITY,
+        NV_ENC_CAPS_SUPPORT_BFRAME_REF_MODE,
+        NV_ENC_CAPS_SUPPORT_EMPHASIS_LEVEL_MAP,
+        NV_ENC_CAPS_WIDTH_MIN,
+        NV_ENC_CAPS_HEIGHT_MIN,
+        NV_ENC_CAPS_SUPPORT_MULTIPLE_REF_FRAMES,
+        NV_ENC_CAPS_SUPPORT_ALPHA_LAYER_ENCODING,
+        NV_ENC_CAPS_NUM_ENCODER_ENGINES,
+        NV_ENC_CAPS_SINGLE_SLICE_INTRA_REFRESH,
+        NV_ENC_CAPS_DISABLE_ENC_STATE_ADVANCE,
+        NV_ENC_CAPS_OUTPUT_RECON_SURFACE,
+        NV_ENC_CAPS_OUTPUT_BLOCK_STATS,
+        NV_ENC_CAPS_OUTPUT_ROW_STATS,
+        NV_ENC_CAPS_SUPPORT_TEMPORAL_FILTER,
+        NV_ENC_CAPS_SUPPORT_LOOKAHEAD_LEVEL,
+        NV_ENC_CAPS_SUPPORT_UNIDIRECTIONAL_B,
+        NV_ENC_CAPS_EXPOSED_COUNT
+    }
+
+    public enum NV_ENC_LOOKAHEAD_LEVEL : uint
+    {
+        NV_ENC_LOOKAHEAD_LEVEL_0 = 0,
+        NV_ENC_LOOKAHEAD_LEVEL_1 = 1,
+        NV_ENC_LOOKAHEAD_LEVEL_2 = 2,
+        NV_ENC_LOOKAHEAD_LEVEL_3 = 3,
+        NV_ENC_LOOKAHEAD_LEVEL_AUTOSELECT = 15,
+    }
+
+    public enum NV_ENC_BIT_DEPTH : uint
+    {
+        NV_ENC_BIT_DEPTH_INVALID = 0,
+        NV_ENC_BIT_DEPTH_8 = 8,
+        NV_ENC_BIT_DEPTH_10 = 10,
+    }
+
+    public enum NV_ENC_AV1_PART_SIZE : uint
+    {
+        NV_ENC_AV1_PART_SIZE_AUTOSELECT = 0,
+        NV_ENC_AV1_PART_SIZE_4x4 = 1,
+        NV_ENC_AV1_PART_SIZE_8x8 = 2,
+        NV_ENC_AV1_PART_SIZE_16x16 = 3,
+        NV_ENC_AV1_PART_SIZE_32x32 = 4,
+        NV_ENC_AV1_PART_SIZE_64x64 = 5,
+    }
+
+    public enum NV_ENC_VUI_VIDEO_FORMAT : uint
+    {
+        NV_ENC_VUI_VIDEO_FORMAT_COMPONENT = 0,
+        NV_ENC_VUI_VIDEO_FORMAT_PAL = 1,
+        NV_ENC_VUI_VIDEO_FORMAT_NTSC = 2,
+        NV_ENC_VUI_VIDEO_FORMAT_SECAM = 3,
+        NV_ENC_VUI_VIDEO_FORMAT_MAC = 4,
+        NV_ENC_VUI_VIDEO_FORMAT_UNSPECIFIED = 5,
+    }
+
+    public enum NV_ENC_VUI_COLOR_PRIMARIES : uint
+    {
+        NV_ENC_VUI_COLOR_PRIMARIES_UNDEFINED = 0,
+        NV_ENC_VUI_COLOR_PRIMARIES_BT709 = 1,
+        NV_ENC_VUI_COLOR_PRIMARIES_UNSPECIFIED = 2,
+        NV_ENC_VUI_COLOR_PRIMARIES_RESERVED = 3,
+        NV_ENC_VUI_COLOR_PRIMARIES_BT470M = 4,
+        NV_ENC_VUI_COLOR_PRIMARIES_BT470BG = 5,
+        NV_ENC_VUI_COLOR_PRIMARIES_SMPTE170M = 6,
+        NV_ENC_VUI_COLOR_PRIMARIES_SMPTE240M = 7,
+        NV_ENC_VUI_COLOR_PRIMARIES_FILM = 8,
+        NV_ENC_VUI_COLOR_PRIMARIES_BT2020 = 9,
+        NV_ENC_VUI_COLOR_PRIMARIES_SMPTE428 = 10,
+        NV_ENC_VUI_COLOR_PRIMARIES_SMPTE431 = 11,
+        NV_ENC_VUI_COLOR_PRIMARIES_SMPTE432 = 12,
+        NV_ENC_VUI_COLOR_PRIMARIES_JEDEC_P22 = 22,
+
+    }
+
+    public enum NV_ENC_VUI_TRANSFER_CHARACTERISTIC : uint
+    {
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_UNDEFINED = 0,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT709 = 1,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_UNSPECIFIED = 2,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_RESERVED = 3,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT470M = 4,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT470BG = 5,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_SMPTE170M = 6,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_SMPTE240M = 7,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_LINEAR = 8,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_LOG = 9,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_LOG_SQRT = 10,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_IEC61966_2_4 = 11,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT1361_ECG = 12,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_SRGB = 13,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT2020_10 = 14,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT2020_12 = 15,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_SMPTE2084 = 16,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_SMPTE428 = 17,
+        NV_ENC_VUI_TRANSFER_CHARACTERISTIC_ARIB_STD_B67 = 18,
+    }
+
+    public enum NV_ENC_VUI_MATRIX_COEFFS : uint
+    {
+        NV_ENC_VUI_MATRIX_COEFFS_RGB = 0,
+        NV_ENC_VUI_MATRIX_COEFFS_BT709 = 1,
+        NV_ENC_VUI_MATRIX_COEFFS_UNSPECIFIED = 2,
+        NV_ENC_VUI_MATRIX_COEFFS_RESERVED = 3,
+        NV_ENC_VUI_MATRIX_COEFFS_FCC = 4,
+        NV_ENC_VUI_MATRIX_COEFFS_BT470BG = 5,
+        NV_ENC_VUI_MATRIX_COEFFS_SMPTE170M = 6,
+        NV_ENC_VUI_MATRIX_COEFFS_SMPTE240M = 7,
+        NV_ENC_VUI_MATRIX_COEFFS_YCGCO = 8,
+        NV_ENC_VUI_MATRIX_COEFFS_BT2020_NCL = 9,
+        NV_ENC_VUI_MATRIX_COEFFS_BT2020_CL = 10,
+        NV_ENC_VUI_MATRIX_COEFFS_SMPTE2085 = 11,
+    }
+
+    public enum NV_ENC_PARAMS_FRAME_FIELD_MODE : uint
+    {
+        NV_ENC_PARAMS_FRAME_FIELD_MODE_FRAME = 0x01,
+        NV_ENC_PARAMS_FRAME_FIELD_MODE_FIELD = 0x02,
+        NV_ENC_PARAMS_FRAME_FIELD_MODE_MBAFF = 0x03,
+    }
+
+    public enum NV_ENC_MV_PRECISION : uint
+    {
+        NV_ENC_MV_PRECISION_DEFAULT = 0x0,
+        NV_ENC_MV_PRECISION_FULL_PEL = 0x01,
+        NV_ENC_MV_PRECISION_HALF_PEL = 0x02,
+        NV_ENC_MV_PRECISION_QUARTER_PEL = 0x03,
+    }
+
+    public enum NV_ENC_STATE_RESTORE_TYPE : uint
+    {
+        NV_ENC_STATE_RESTORE_FULL = 0x01,
+        NV_ENC_STATE_RESTORE_RATE_CONTROL = 0x02,
+        NV_ENC_STATE_RESTORE_ENCODE = 0x03,
+    }
+
+    public enum NV_ENC_OUTPUT_STATS_LEVEL : uint
+    {
+        NV_ENC_OUTPUT_STATS_NONE = 0,
+        NV_ENC_OUTPUT_STATS_BLOCK_LEVEL = 1,
+        NV_ENC_OUTPUT_STATS_ROW_LEVEL = 2,
+    }
+
+    public enum NV_ENC_INPUT_RESOURCE_TYPE : uint
+    {
+        NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX = 0x0,
+        NV_ENC_INPUT_RESOURCE_TYPE_CUDADEVICEPTR = 0x1,
+        NV_ENC_INPUT_RESOURCE_TYPE_CUDAARRAY = 0x2,
+        NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX = 0x3,
+    }
+
+    public enum NV_ENC_BUFFER_USAGE : uint
+    {
+        NV_ENC_INPUT_IMAGE = 0x0,
+        NV_ENC_OUTPUT_MOTION_VECTOR = 0x1,
+        NV_ENC_OUTPUT_BITSTREAM = 0x2,
+        NV_ENC_OUTPUT_RECON = 0x4,
+    }
+
+    public enum NV_ENC_PIC_STRUCT : uint
+    {
+        NV_ENC_PIC_STRUCT_FRAME = 0x01,
+        NV_ENC_PIC_STRUCT_FIELD_TOP_BOTTOM = 0x02,
+        NV_ENC_PIC_STRUCT_FIELD_BOTTOM_TOP = 0x03
+    }
+
+    public enum NV_ENC_DISPLAY_PIC_STRUCT : uint
+    {
+        NV_ENC_PIC_STRUCT_DISPLAY_FRAME = 0x00,
+        NV_ENC_PIC_STRUCT_DISPLAY_FIELD_TOP_BOTTOM = 0x01,
+        NV_ENC_PIC_STRUCT_DISPLAY_FIELD_BOTTOM_TOP = 0x02,
+        NV_ENC_PIC_STRUCT_DISPLAY_FRAME_DOUBLING = 0x03,
+        NV_ENC_PIC_STRUCT_DISPLAY_FRAME_TRIPLING = 0x04
+    }
+
+    public enum NV_ENC_LEVEL : uint
+    {
+        NV_ENC_LEVEL_AUTOSELECT = 0,
+        NV_ENC_LEVEL_H264_1 = 10,
+        NV_ENC_LEVEL_H264_1b = 9,
+        NV_ENC_LEVEL_H264_11 = 11,
+        NV_ENC_LEVEL_H264_12 = 12,
+        NV_ENC_LEVEL_H264_13 = 13,
+        NV_ENC_LEVEL_H264_2 = 20,
+        NV_ENC_LEVEL_H264_21 = 21,
+        NV_ENC_LEVEL_H264_22 = 22,
+        NV_ENC_LEVEL_H264_3 = 30,
+        NV_ENC_LEVEL_H264_31 = 31,
+        NV_ENC_LEVEL_H264_32 = 32,
+        NV_ENC_LEVEL_H264_4 = 40,
+        NV_ENC_LEVEL_H264_41 = 41,
+        NV_ENC_LEVEL_H264_42 = 42,
+        NV_ENC_LEVEL_H264_5 = 50,
+        NV_ENC_LEVEL_H264_51 = 51,
+        NV_ENC_LEVEL_H264_52 = 52,
+        NV_ENC_LEVEL_H264_60 = 60,
+        NV_ENC_LEVEL_H264_61 = 61,
+        NV_ENC_LEVEL_H264_62 = 62,
+        NV_ENC_LEVEL_HEVC_1 = 30,
+        NV_ENC_LEVEL_HEVC_2 = 60,
+        NV_ENC_LEVEL_HEVC_21 = 63,
+        NV_ENC_LEVEL_HEVC_3 = 90,
+        NV_ENC_LEVEL_HEVC_31 = 93,
+        NV_ENC_LEVEL_HEVC_4 = 120,
+        NV_ENC_LEVEL_HEVC_41 = 123,
+        NV_ENC_LEVEL_HEVC_5 = 150,
+        NV_ENC_LEVEL_HEVC_51 = 153,
+        NV_ENC_LEVEL_HEVC_52 = 156,
+        NV_ENC_LEVEL_HEVC_6 = 180,
+        NV_ENC_LEVEL_HEVC_61 = 183,
+        NV_ENC_LEVEL_HEVC_62 = 186,
+        NV_ENC_TIER_HEVC_MAIN = 0,
+        NV_ENC_TIER_HEVC_HIGH = 1,
+        NV_ENC_LEVEL_AV1_2 = 0,
+        NV_ENC_LEVEL_AV1_21 = 1,
+        NV_ENC_LEVEL_AV1_22 = 2,
+        NV_ENC_LEVEL_AV1_23 = 3,
+        NV_ENC_LEVEL_AV1_3 = 4,
+        NV_ENC_LEVEL_AV1_31 = 5,
+        NV_ENC_LEVEL_AV1_32 = 6,
+        NV_ENC_LEVEL_AV1_33 = 7,
+        NV_ENC_LEVEL_AV1_4 = 8,
+        NV_ENC_LEVEL_AV1_41 = 9,
+        NV_ENC_LEVEL_AV1_42 = 10,
+        NV_ENC_LEVEL_AV1_43 = 11,
+        NV_ENC_LEVEL_AV1_5 = 12,
+        NV_ENC_LEVEL_AV1_51 = 13,
+        NV_ENC_LEVEL_AV1_52 = 14,
+        NV_ENC_LEVEL_AV1_53 = 15,
+        NV_ENC_LEVEL_AV1_6 = 16,
+        NV_ENC_LEVEL_AV1_61 = 17,
+        NV_ENC_LEVEL_AV1_62 = 18,
+        NV_ENC_LEVEL_AV1_63 = 19,
+        NV_ENC_LEVEL_AV1_7 = 20,
+        NV_ENC_LEVEL_AV1_71 = 21,
+        NV_ENC_LEVEL_AV1_72 = 22,
+        NV_ENC_LEVEL_AV1_73 = 23,
+        NV_ENC_LEVEL_AV1_AUTOSELECT,
+        NV_ENC_TIER_AV1_0 = 0,
+        NV_ENC_TIER_AV1_1 = 1
+    }
+
+    public enum NVENCSTATUS : uint
+    {
+        NV_ENC_SUCCESS,
+        NV_ENC_ERR_NO_ENCODE_DEVICE,
+        NV_ENC_ERR_UNSUPPORTED_DEVICE,
+        NV_ENC_ERR_INVALID_ENCODERDEVICE,
+        NV_ENC_ERR_INVALID_DEVICE,
+        NV_ENC_ERR_DEVICE_NOT_EXIST,
+        NV_ENC_ERR_INVALID_PTR,
+        NV_ENC_ERR_INVALID_EVENT,
+        NV_ENC_ERR_INVALID_PARAM,
+        NV_ENC_ERR_INVALID_CALL,
+        NV_ENC_ERR_OUT_OF_MEMORY,
+        NV_ENC_ERR_ENCODER_NOT_INITIALIZED,
+        NV_ENC_ERR_UNSUPPORTED_PARAM,
+        NV_ENC_ERR_LOCK_BUSY,
+        NV_ENC_ERR_NOT_ENOUGH_BUFFER,
+        NV_ENC_ERR_INVALID_VERSION,
+        NV_ENC_ERR_MAP_FAILED,
+        NV_ENC_ERR_NEED_MORE_INPUT,
+        NV_ENC_ERR_ENCODER_BUSY,
+        NV_ENC_ERR_EVENT_NOT_REGISTERD,
+        NV_ENC_ERR_GENERIC,
+        NV_ENC_ERR_INCOMPATIBLE_CLIENT_KEY,
+        NV_ENC_ERR_UNIMPLEMENTED,
+        NV_ENC_ERR_RESOURCE_REGISTER_FAILED,
+        NV_ENC_ERR_RESOURCE_NOT_REGISTERED,
+        NV_ENC_ERR_RESOURCE_NOT_MAPPED,
+        NV_ENC_ERR_NEED_MORE_OUTPUT,
+    }
+
+    public enum NV_ENC_PIC_FLAGS : uint
+    {
+        NV_ENC_PIC_FLAG_FORCEINTRA = 0x1,
+        NV_ENC_PIC_FLAG_FORCEIDR = 0x2,
+        NV_ENC_PIC_FLAG_OUTPUT_SPSPPS = 0x4,
+        NV_ENC_PIC_FLAG_EOS = 0x8,
+        NV_ENC_PIC_FLAG_DISABLE_ENC_STATE_ADVANCE = 0x10,
+        NV_ENC_PIC_FLAG_OUTPUT_RECON_FRAME = 0x20,
+    }
+
+    public enum NV_ENC_MEMORY_HEAP : uint
+    {
+        NV_ENC_MEMORY_HEAP_AUTOSELECT = 0,
+        NV_ENC_MEMORY_HEAP_VID = 1,
+        NV_ENC_MEMORY_HEAP_SYSMEM_CACHED = 2,
+        NV_ENC_MEMORY_HEAP_SYSMEM_UNCACHED = 3
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // GUID
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GUID
+    {
+        public uint Data1;
+        public ushort Data2;
+        public ushort Data3;
+        public unsafe fixed byte Data4[8];
+
+        // {6BC82762-4E63-4ca4-AA85-1E50F321F6BF}
+        public static GUID H264
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x6BC82762, Data2 = 0x4E63, Data3 = 0x4CA4 };
+                g.Data4[0] = 0xAA; g.Data4[1] = 0x85; g.Data4[2] = 0x1E; g.Data4[3] = 0x50;
+                g.Data4[4] = 0xF3; g.Data4[5] = 0x21; g.Data4[6] = 0xF6; g.Data4[7] = 0xBF;
+                return g;
+            }
+        }
+        // {790CDC88-4522-4D7B-9530-BD841F8382C8}
+        public static GUID HEVC
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x790CDC88, Data2 = 0x4522, Data3 = 0x4D7B };
+                g.Data4[0] = 0x94; g.Data4[1] = 0x25; g.Data4[2] = 0xBD; g.Data4[3] = 0xA9;
+                g.Data4[4] = 0x97; g.Data4[5] = 0x5F; g.Data4[6] = 0x76; g.Data4[7] = 0x03;
+                return g;
+            }
+        }
+
+        // =========================================================================================
+        // *   Encode Profile GUIDS supported by the NvEncodeAPI interface.
+        // =========================================================================================
+
+        public static GUID Profile_AutoSelect
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0xBFD6F8E7, Data2 = 0x233C, Data3 = 0x4341 };
+                g.Data4[0] = 0x8B; g.Data4[1] = 0x3E; g.Data4[2] = 0x48; g.Data4[3] = 0x18;
+                g.Data4[4] = 0x52; g.Data4[5] = 0x38; g.Data4[6] = 0x03; g.Data4[7] = 0xF4;
+                return g;
+            }
+        }
+
+        public static GUID H264_Profile_Baseline
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x0727BCAA, Data2 = 0x78C4, Data3 = 0x4C83 };
+                g.Data4[0] = 0x8C; g.Data4[1] = 0x2F; g.Data4[2] = 0xEF; g.Data4[3] = 0x3D;
+                g.Data4[4] = 0xFF; g.Data4[5] = 0x26; g.Data4[6] = 0x7C; g.Data4[7] = 0x6A;
+                return g;
+            }
+        }
+
+        public static GUID H264_Profile_Main
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x60B5C1D4, Data2 = 0x67FE, Data3 = 0x4790 };
+                g.Data4[0] = 0x94; g.Data4[1] = 0xD5; g.Data4[2] = 0xC4; g.Data4[3] = 0x72;
+                g.Data4[4] = 0x6D; g.Data4[5] = 0x7B; g.Data4[6] = 0x6E; g.Data4[7] = 0x6D;
+                return g;
+            }
+        }
+
+        public static GUID H264_Profile_High
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0xE7CBC309, Data2 = 0x4F7A, Data3 = 0x4B89 };
+                g.Data4[0] = 0xAF; g.Data4[1] = 0x2A; g.Data4[2] = 0xD5; g.Data4[3] = 0x37;
+                g.Data4[4] = 0xC9; g.Data4[5] = 0x2B; g.Data4[6] = 0xE3; g.Data4[7] = 0x10;
+                return g;
+            }
+        }
+
+        public static GUID HEVC_Profile_Main
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0xB514C39A, Data2 = 0xB55B, Data3 = 0x40FA };
+                g.Data4[0] = 0x87; g.Data4[1] = 0x8F; g.Data4[2] = 0xF1; g.Data4[3] = 0x25;
+                g.Data4[4] = 0x3B; g.Data4[5] = 0x4D; g.Data4[6] = 0xFD; g.Data4[7] = 0xEC;
+                return g;
+            }
+        }
+
+        public static GUID HEVC_Profile_Main10
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0xFA4D2B6C, Data2 = 0x3A5B, Data3 = 0x411A };
+                g.Data4[0] = 0x80; g.Data4[1] = 0x18; g.Data4[2] = 0x0A; g.Data4[3] = 0x3F;
+                g.Data4[4] = 0x5E; g.Data4[5] = 0x3C; g.Data4[6] = 0x9B; g.Data4[7] = 0xE5;
+                return g;
+            }
+        }
+
+        // =========================================================================================
+        // *   Preset GUIDS supported by the NvEncodeAPI interface.
+        // =========================================================================================
+
+        // Performance degrades and quality improves as we move from P1 to P7. Presets P3 to P7 for H264 and Presets P2 to P7 for HEVC have B frames enabled by default
+        // for HIGH_QUALITY and LOSSLESS tuning info, and will not work with Weighted Prediction enabled. In case Weighted Prediction is required, disable B frames by
+        // setting frameIntervalP = 1
+        // {FC0A8D3E-5C8B-4A34-A7FB-B7792C1F7F0C}  — P1 (lowest latency)
+        public static GUID Preset_P1
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0xFC0A8D3E, Data2 = 0x45F8, Data3 = 0x4CF8 };
+                g.Data4[0] = 0x80; g.Data4[1] = 0xC7; g.Data4[2] = 0x29; g.Data4[3] = 0x88;
+                g.Data4[4] = 0x71; g.Data4[5] = 0x59; g.Data4[6] = 0x0E; g.Data4[7] = 0xBF;
+                return g;
+            }
+        }
+
+        // {F581CFB8-88D6-4381-93F0-DF13F9C27DAB}  — P2
+        public static GUID Preset_P2
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0xF581CFB8, Data2 = 0x88D6, Data3 = 0x4381 };
+                g.Data4[0] = 0x93; g.Data4[1] = 0xF0; g.Data4[2] = 0xDF; g.Data4[3] = 0x13;
+                g.Data4[4] = 0xF9; g.Data4[5] = 0xC2; g.Data4[6] = 0x7D; g.Data4[7] = 0xAB;
+                return g;
+            }
+        }
+
+        // {36850110-3A07-441F-94D5-3670631F91F6}
+        public static GUID Preset_P3
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x36850110, Data2 = 0x3A07, Data3 = 0x441F };
+                g.Data4[0] = 0x94; g.Data4[1] = 0xD5; g.Data4[2] = 0x36; g.Data4[3] = 0x70;
+                g.Data4[4] = 0x63; g.Data4[5] = 0x1F; g.Data4[6] = 0x91; g.Data4[7] = 0xF6;
+                return g;
+            }
+        }
+
+        // {90A7B826-DF06-4862-B9D2-CD6D73A08681}
+        public static GUID Preset_P4
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x90A7B826, Data2 = 0xDF06, Data3 = 0x4862 };
+                g.Data4[0] = 0xB9; g.Data4[1] = 0xD2; g.Data4[2] = 0xCD; g.Data4[3] = 0x6D;
+                g.Data4[4] = 0x73; g.Data4[5] = 0xA0; g.Data4[6] = 0x86; g.Data4[7] = 0x81;
+                return g;
+            }
+        }
+
+        // {21C6E6B4-297A-4CBA-998F-B6CBDE72ADE3}
+        public static GUID Preset_P5
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x21C6E6B4, Data2 = 0x297A, Data3 = 0x4CBA };
+                g.Data4[0] = 0x99; g.Data4[1] = 0x8F; g.Data4[2] = 0xB6; g.Data4[3] = 0xCB;
+                g.Data4[4] = 0xDE; g.Data4[5] = 0x72; g.Data4[6] = 0xAD; g.Data4[7] = 0xE3;
+                return g;
+            }
+        }
+
+        // {8E75C279-6299-4AB6-8302-0B215A335CF5}
+        public static GUID Preset_P6
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x8E75C279, Data2 = 0x6299, Data3 = 0x4AB6 };
+                g.Data4[0] = 0x83; g.Data4[1] = 0x02; g.Data4[2] = 0x0B; g.Data4[3] = 0x21;
+                g.Data4[4] = 0x5A; g.Data4[5] = 0x33; g.Data4[6] = 0x5C; g.Data4[7] = 0xF5;
+                return g;
+            }
+        }
+
+        // {84848C12-6F71-4C13-931B-53E283F57974}
+        public static GUID Preset_P7
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x84848C12, Data2 = 0x6F71, Data3 = 0x4C13 };
+                g.Data4[0] = 0x93; g.Data4[1] = 0x1B; g.Data4[2] = 0x53; g.Data4[3] = 0xE2;
+                g.Data4[4] = 0x83; g.Data4[5] = 0xF5; g.Data4[6] = 0x79; g.Data4[7] = 0x74;
+                return g;
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_RC_PARAMS — 128 bytes
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_RC_PARAMS
+    {
+        public uint version;
+        public NV_ENC_PARAMS_RC_MODE rateControlMode;
+
+
+        // NV_ENC_QP constQP
+        public uint constQP_qpInterP;
+        public uint constQP_qpInterB;
+        public uint constQP_qpIntra;
+        public uint averageBitRate;
+        public uint maxBitRate;
+        public uint vbvBufferSize;
+        public uint vbvInitialDelay;
+
+
+        // --- BITFIELDS ---
+        public uint _bitFields;
+        public uint enableMinQP { get => (_bitFields & 0x00000001); set => _bitFields = (_bitFields & ~0x00000001u) | (value & 1); }
+        public uint enableMaxQP { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint enableInitialRCQP { get => (_bitFields >> 2) & 1; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint enableAQ { get => (_bitFields >> 3) & 1; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1) << 3); }
+        public uint reservedBitField1 { get => (_bitFields >> 4) & 1; set => _bitFields = (_bitFields & ~(1u << 4)) | ((value & 1) << 4); }
+        public uint enableLookahead { get => (_bitFields >> 5) & 1; set => _bitFields = (_bitFields & ~(1u << 5)) | ((value & 1) << 5); }
+        public uint disableIadapt { get => (_bitFields >> 6) & 1; set => _bitFields = (_bitFields & ~(1u << 6)) | ((value & 1) << 6); }
+        public uint disableBadapt { get => (_bitFields >> 7) & 1; set => _bitFields = (_bitFields & ~(1u << 7)) | ((value & 1) << 7); }
+        public uint enableTemporalAQ { get => (_bitFields >> 8) & 1; set => _bitFields = (_bitFields & ~(1u << 8)) | ((value & 1) << 8); }
+        public uint zeroReorderDelay { get => (_bitFields >> 9) & 1; set => _bitFields = (_bitFields & ~(1u << 9)) | ((value & 1) << 9); }
+        public uint enableNonRefP { get => (_bitFields >> 10) & 1; set => _bitFields = (_bitFields & ~(1u << 10)) | ((value & 1) << 10); }
+        public uint strictGOPTarget { get => (_bitFields >> 11) & 1; set => _bitFields = (_bitFields & ~(1u << 11)) | ((value & 1) << 11); }
+        public uint aqStrength { get => (_bitFields >> 12) & 0x0F; set => _bitFields = (_bitFields & ~(0x0Fu << 12)) | ((value & 0x0F) << 12); }
+        public uint enableExtLookahead { get => (_bitFields >> 16) & 1; set => _bitFields = (_bitFields & ~(1u << 16)) | ((value & 1) << 16); }
+        // bits 17-31 are reservedBitFields:15
+        // ------------------------------------------
+
+
+        // NV_ENC_QP minQP
+        public uint minQP_qpInterP;
+        public uint minQP_qpInterB;
+        public uint minQP_qpIntra;
+
+
+        // NV_ENC_QP maxQP
+        public uint maxQP_qpInterP;
+        public uint maxQP_qpInterB;
+        public uint maxQP_qpIntra;
+
+
+        // NV_ENC_QP initialRCQP
+        public uint initialRCQP_qpInterP;
+        public uint initialRCQP_qpInterB;
+        public uint initialRCQP_qpIntra;
+        public uint temporallayerIdxMask;
+        public unsafe fixed byte temporalLayerQP[8];
+        public byte targetQuality;
+        public byte targetQualityLSB;
+        public ushort lookaheadDepth;
+        public byte lowDelayKeyFrameScale;
+        public sbyte yDcQPIndexOffset;
+        public sbyte uDcQPIndexOffset;
+        public sbyte vDcQPIndexOffset;
+        public NV_ENC_QP_MAP_MODE qpMapMode;
+        public NV_ENC_MULTI_PASS multiPass;
+        public uint alphaLayerBitrateRatio;
+        public sbyte cbQPIndexOffset;
+        public sbyte crQPIndexOffset;
+        public ushort reserved2;
+        public NV_ENC_LOOKAHEAD_LEVEL lookaheadLevel;
+        public unsafe fixed uint reserved[3];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NV_ENC_CLOCK_TIMESTAMP_SET
+    {
+        private uint _bitFields;
+
+        public uint countingType { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+        public uint discontinuityFlag { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint cntDroppedFrames { get => (_bitFields >> 2) & 1; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint nFrames { get => (_bitFields >> 3) & 0xFF; set => _bitFields = (_bitFields & ~(0xFFu << 3)) | ((value & 0xFF) << 3); }
+        public uint secondsValue { get => (_bitFields >> 11) & 0x3F; set => _bitFields = (_bitFields & ~(0x3Fu << 11)) | ((value & 0x3F) << 11); }
+        public uint minutesValue { get => (_bitFields >> 17) & 0x3F; set => _bitFields = (_bitFields & ~(0x3Fu << 17)) | ((value & 0x3F) << 17); }
+        public uint hoursValue { get => (_bitFields >> 23) & 0x1F; set => _bitFields = (_bitFields & ~(0x1Fu << 23)) | ((value & 0x1F) << 23); }
+        public uint reserved2 { get => (_bitFields >> 28) & 0xF; set => _bitFields = (_bitFields & ~(0xFu << 28)) | ((value & 0xF) << 28); }
+
+        public uint timeOffset;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_CONFIG_HEVC — 1280 bytes
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CONFIG_HEVC
+    {
+        public uint level;
+        public uint tier;
+        public NV_ENC_HEVC_CUSIZE minCUSize;
+        public NV_ENC_HEVC_CUSIZE maxCUSize;
+
+        // --- BITFIELDS ---
+        public uint _bitFields;
+        public uint useConstrainedIntraPred { get => (_bitFields & 1); set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+        public uint disableDeblockAcrossSliceBoundary { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint outputBufferingPeriodSEI { get => (_bitFields >> 2) & 1; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint outputPictureTimingSEI { get => (_bitFields >> 3) & 1; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1) << 3); }
+        public uint outputAUD { get => (_bitFields >> 4) & 1; set => _bitFields = (_bitFields & ~(1u << 4)) | ((value & 1) << 4); }
+        public uint enableLTR { get => (_bitFields >> 5) & 1; set => _bitFields = (_bitFields & ~(1u << 5)) | ((value & 1) << 5); }
+        public uint disableSPSPPS { get => (_bitFields >> 6) & 1; set => _bitFields = (_bitFields & ~(1u << 6)) | ((value & 1) << 6); }
+        public uint repeatSPSPPS { get => (_bitFields >> 7) & 1; set => _bitFields = (_bitFields & ~(1u << 7)) | ((value & 1) << 7); }
+        public uint enableIntraRefresh { get => (_bitFields >> 8) & 1; set => _bitFields = (_bitFields & ~(1u << 8)) | ((value & 1) << 8); }
+        public uint chromaFormatIDC { get => (_bitFields >> 9) & 3; set => _bitFields = (_bitFields & ~(3u << 9)) | ((value & 3) << 9); }
+        // bits 11-13 reserved3:3
+        public uint enableFillerDataInsertion { get => (_bitFields >> 14) & 1; set => _bitFields = (_bitFields & ~(1u << 14)) | ((value & 1) << 14); }
+        public uint enableConstrainedEncoding { get => (_bitFields >> 15) & 1; set => _bitFields = (_bitFields & ~(1u << 15)) | ((value & 1) << 15); }
+        public uint enableAlphaLayerEncoding { get => (_bitFields >> 16) & 1; set => _bitFields = (_bitFields & ~(1u << 16)) | ((value & 1) << 16); }
+        public uint singleSliceIntraRefresh { get => (_bitFields >> 17) & 1; set => _bitFields = (_bitFields & ~(1u << 17)) | ((value & 1) << 17); }
+        public uint outputRecoveryPointSEI { get => (_bitFields >> 18) & 1; set => _bitFields = (_bitFields & ~(1u << 18)) | ((value & 1) << 18); }
+        public uint outputTimeCodeSEI { get => (_bitFields >> 19) & 1; set => _bitFields = (_bitFields & ~(1u << 19)) | ((value & 1) << 19); }
+        // bits 20-31 reserved:12
+        // ----------------------------------------
+
+
+        public uint idrPeriod;
+        public uint intraRefreshPeriod;
+        public uint intraRefreshCnt;
+        public uint maxNumRefFramesInDPB;
+        public uint ltrNumFrames;
+        public uint vpsId;
+        public uint spsId;
+        public uint ppsId;
+        public uint sliceMode;
+        public uint sliceModeData;
+        public uint maxTemporalLayersMinus1;
+        public NV_ENC_CONFIG_H264_VUI_PARAMETERS hevcVUIParameters;
+        public uint ltrTrustMode;
+        public NV_ENC_BFRAME_REF_MODE useBFramesAsRef;
+        public NV_ENC_NUM_REF_FRAMES numRefL0;
+        public NV_ENC_NUM_REF_FRAMES numRefL1;
+        public NV_ENC_TEMPORAL_FILTER_LEVEL tfLevel;
+        public uint disableDeblockingFilterIDC;
+        public NV_ENC_BIT_DEPTH outputBitDepth;
+        public NV_ENC_BIT_DEPTH inputBitDepth;
+        public fixed uint reserved1[210];
+        public fixed ulong reserved2[64];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CONFIG_H264 // todo
+    {
+        // Bitfields (first uint)
+        private uint _bitFields1;
+        public uint enableTemporalSVC { get => _bitFields1 & 1; set => _bitFields1 = (_bitFields1 & ~1u) | (value & 1); }
+        public uint enableStereoMVC { get => (_bitFields1 >> 1) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint hierarchicalPFrames { get => (_bitFields1 >> 2) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint hierarchicalBFrames { get => (_bitFields1 >> 3) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 3)) | ((value & 1) << 3); }
+        public uint outputBufferingPeriodSEI { get => (_bitFields1 >> 4) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 4)) | ((value & 1) << 4); }
+        public uint outputPictureTimingSEI { get => (_bitFields1 >> 5) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 5)) | ((value & 1) << 5); }
+        public uint outputAUD { get => (_bitFields1 >> 6) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 6)) | ((value & 1) << 6); }
+        public uint disableSPSPPS { get => (_bitFields1 >> 7) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 7)) | ((value & 1) << 7); }
+        public uint outputFramePackingSEI { get => (_bitFields1 >> 8) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 8)) | ((value & 1) << 8); }
+        public uint outputRecoveryPointSEI { get => (_bitFields1 >> 9) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 9)) | ((value & 1) << 9); }
+        public uint enableIntraRefresh { get => (_bitFields1 >> 10) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 10)) | ((value & 1) << 10); }
+        public uint enableConstrainedEncoding { get => (_bitFields1 >> 11) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 11)) | ((value & 1) << 11); }
+        public uint repeatSPSPPS { get => (_bitFields1 >> 12) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 12)) | ((value & 1) << 12); }
+        public uint enableVFR { get => (_bitFields1 >> 13) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 13)) | ((value & 1) << 13); }
+        public uint enableLTR { get => (_bitFields1 >> 14) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 14)) | ((value & 1) << 14); }
+        public uint qpPrimeYZeroTransformBypassFlag { get => (_bitFields1 >> 15) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 15)) | ((value & 1) << 15); }
+        public uint useConstrainedIntraPred { get => (_bitFields1 >> 16) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 16)) | ((value & 1) << 16); }
+        public uint enableFillerDataInsertion { get => (_bitFields1 >> 17) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 17)) | ((value & 1) << 17); }
+        public uint disableSVCPrefixNalu { get => (_bitFields1 >> 18) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 18)) | ((value & 1) << 18); }
+        public uint enableScalabilityInfoSEI { get => (_bitFields1 >> 19) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 19)) | ((value & 1) << 19); }
+        public uint singleSliceIntraRefresh { get => (_bitFields1 >> 20) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 20)) | ((value & 1) << 20); }
+        public uint enableTimeCode { get => (_bitFields1 >> 21) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 21)) | ((value & 1) << 21); }
+        // bits 22-31 reserved
+
+        public uint level;
+        public uint idrPeriod;
+        public uint separateColourPlaneFlag;
+        public uint disableDeblockingFilterIDC;
+        public uint numTemporalLayers;
+        public uint spsId;
+        public uint ppsId;
+        public NV_ENC_H264_ADAPTIVE_TRANSFORM_MODE adaptiveTransformMode;
+        public NV_ENC_H264_FMO_MODE fmoMode;
+        public NV_ENC_H264_BDIRECT_MODE bdirectMode;
+        public NV_ENC_H264_ENTROPY_CODING_MODE entropyCodingMode;
+        public NV_ENC_STEREO_PACKING_MODE stereoMode;
+        public uint intraRefreshPeriod;
+        public uint intraRefreshCnt;
+        public uint maxNumRefFrames;
+        public uint sliceMode;
+        public uint sliceModeData;
+        public NV_ENC_CONFIG_H264_VUI_PARAMETERS h264VUIParameters;
+        public uint ltrNumFrames;
+        public uint ltrTrustMode;
+        public uint chromaFormatIDC;
+        public uint maxTemporalLayers;
+        public NV_ENC_BFRAME_REF_MODE useBFramesAsRef;
+        public NV_ENC_NUM_REF_FRAMES numRefL0;
+        public NV_ENC_NUM_REF_FRAMES numRefL1;
+        public NV_ENC_BIT_DEPTH outputBitDepth;
+        public NV_ENC_BIT_DEPTH inputBitDepth;
+        public fixed uint reserved1[265];
+        public fixed ulong reserved2[64];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NV_ENC_CONFIG_H264_VUI_PARAMETERS
+    {
+        public uint overscanInfoPresentFlag;
+        public uint overscanInfo;
+        public uint videoSignalTypePresentFlag;
+        public NV_ENC_VUI_VIDEO_FORMAT videoFormat;
+        public uint videoFullRangeFlag;
+        public uint colourDescriptionPresentFlag;
+        public NV_ENC_VUI_COLOR_PRIMARIES colourPrimaries;
+        public NV_ENC_VUI_TRANSFER_CHARACTERISTIC transferCharacteristics;
+        public NV_ENC_VUI_MATRIX_COEFFS colourMatrix;
+
+        public uint chromaSampleLocationFlag;
+        public uint chromaSampleLocationTop;
+        public uint chromaSampleLocationBot;
+        public uint bitstreamRestrictionFlag;
+        public uint timingInfoPresentFlag;
+        public uint numUnitInTicks;
+        public uint timeScale;
+        public fixed uint reserved[12];
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_CODEC_CONFIG  — union, 1280 bytes = 320 uints
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Explicit, Size = 1792)]
+    public struct NV_ENC_CODEC_CONFIG
+    {
+        [FieldOffset(0)]
+        public NV_ENC_CONFIG_HEVC hevcConfig;
+
+        [FieldOffset(0)]
+        public NV_ENC_CONFIG_H264 h264Config;
+
+        // padding = 1280 bytes
+        [FieldOffset(0)]
+        public unsafe fixed uint reserved[448];
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_CONFIG  — 3072 bytes
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CONFIG
+    {
+        public uint version;
+        public GUID profileGUID;
+        public uint gopLength;
+        public int frameIntervalP;
+        public uint monoChromeEncoding;
+        public NV_ENC_PARAMS_FRAME_FIELD_MODE frameFieldMode;
+        public NV_ENC_MV_PRECISION mvPrecision;
+        public NV_ENC_RC_PARAMS rcParams;
+        public NV_ENC_CODEC_CONFIG encodeCodecConfig;
+        public fixed uint reserved[278];
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_CONFIG Create()
+        {
+            var config = new NV_ENC_CONFIG();
+            config.version = StructVersion(9) | (1u << 31);
+            config.rcParams.version = StructVersion(1);
+
+            return config;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_PRESET_CONFIG  — 4104 bytes
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_PRESET_CONFIG
+    {
+        public uint version;
+        public uint reserved;
+        public NV_ENC_CONFIG presetCfg;
+        public fixed uint reserved1[256];
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_PRESET_CONFIG Create()
+        {
+            var config = new NV_ENC_PRESET_CONFIG();
+            config.version = StructVersion(5) | (1u << 31);
+            config.presetCfg = NV_ENC_CONFIG.Create();
+
+            return config;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS
+    {
+        public uint version;
+        public NV_ENC_DEVICE_TYPE deviceType;
+        public void* device;
+        public void* reserved;
+        public uint apiVersion;
+        public fixed uint reserved1[253];
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS Create()
+        {
+            return new NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS
+            {
+                version = StructVersion(1),
+                apiVersion = GetApiVersion(),
+            };
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_INITIALIZE_PARAMS
+    // From nvEncodeAPI.h v12 — field order matches exactly
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_INITIALIZE_PARAMS
+    {
+        public uint version;
+        public GUID encodeGUID;
+        public GUID presetGUID;
+        public uint encodeWidth;
+        public uint encodeHeight;
+        public uint darWidth;
+        public uint darHeight;
+        public uint frameRateNum;
+        public uint frameRateDen;
+        public uint enableEncodeAsync;
+        public uint enablePTD;
+
+        // --- BITFIELDS ---
+        private uint _bitFields;
+        public uint reportSliceOffsets { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+        public uint enableSubFrameWrite { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint enableExternalMEHints { get => (_bitFields >> 2) & 1; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint enableMEOnlyMode { get => (_bitFields >> 3) & 1; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1) << 3); }
+        public uint enableWeightedPrediction { get => (_bitFields >> 4) & 1; set => _bitFields = (_bitFields & ~(1u << 4)) | ((value & 1) << 4); }
+        public uint splitEncodeMode { get => (_bitFields >> 5) & 0xF; set => _bitFields = (_bitFields & ~(0xFu << 5)) | ((value & 0xF) << 5); }
+        public uint enableOutputInVidmem { get => (_bitFields >> 9) & 1; set => _bitFields = (_bitFields & ~(1u << 9)) | ((value & 1) << 9); }
+        public uint enableReconFrameOutput { get => (_bitFields >> 10) & 1; set => _bitFields = (_bitFields & ~(1u << 10)) | ((value & 1) << 10); }
+        public uint enableOutputStats { get => (_bitFields >> 11) & 1; set => _bitFields = (_bitFields & ~(1u << 11)) | ((value & 1) << 11); }
+        public uint enableUniDirectionalB { get => (_bitFields >> 12) & 1; set => _bitFields = (_bitFields & ~(1u << 12)) | ((value & 1) << 12); }
+        // bits 13-31 are reserved
+        // ------------------------------------------------
+
+        public uint privDataSize;
+        public uint reserved;
+        public void* privData;
+        public NV_ENC_CONFIG* encodeConfig;
+        public uint maxEncodeWidth;
+        public uint maxEncodeHeight;
+        public NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE maxMEHintCounts0;
+        public NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE maxMEHintCounts1;
+        public NV_ENC_TUNING_INFO tuningInfo;
+        public NV_ENC_BUFFER_FORMAT bufferFormat;
+        public uint numStateBuffers;
+        public NV_ENC_OUTPUT_STATS_LEVEL outputStatsLevel;
+        public fixed uint reserved1[284];
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_INITIALIZE_PARAMS Create()
+        {
+            var paramsInit = new NV_ENC_INITIALIZE_PARAMS();
+            paramsInit.version = StructVersion(7) | (1u << 31);
+            paramsInit.enablePTD = 1;
+
+            return paramsInit;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE
+    {
+        private uint _bitFields;
+
+        public uint numCandsPerBlk16x16 { get => _bitFields & 0xF; set => _bitFields = (_bitFields & ~0xFu) | (value & 0xF); }
+        public uint numCandsPerBlk16x8 { get => (_bitFields >> 4) & 0xF; set => _bitFields = (_bitFields & ~(0xFu << 4)) | ((value & 0xF) << 4); }
+        public uint numCandsPerBlk8x16 { get => (_bitFields >> 8) & 0xF; set => _bitFields = (_bitFields & ~(0xFu << 8)) | ((value & 0xF) << 8); }
+        public uint numCandsPerBlk8x8 { get => (_bitFields >> 12) & 0xF; set => _bitFields = (_bitFields & ~(0xFu << 12)) | ((value & 0xF) << 12); }
+        public uint numCandsPerSb { get => (_bitFields >> 16) & 0xFF; set => _bitFields = (_bitFields & ~(0xFFu << 16)) | ((value & 0xFF) << 16); }
+        public uint reserved { get => (_bitFields >> 24) & 0xFF; set => _bitFields = (_bitFields & ~(0xFFu << 24)) | ((value & 0xFF) << 24); }
+
+        public fixed uint reserved1[3];
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_REGISTER_RESOURCE
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_REGISTER_RESOURCE
+    {
+        public uint version;
+        public NV_ENC_INPUT_RESOURCE_TYPE resourceType;
+        public uint width;
+        public uint height;
+        public uint pitch;
+        public uint subResourceIndex;
+        public void* resourceToRegister;
+        public void* registeredResource;
+        public NV_ENC_BUFFER_FORMAT bufferFormat;
+        public NV_ENC_BUFFER_USAGE bufferUsage;
+        public void* pInputFencePoint;
+        public fixed uint chromaOffset[2];
+        public fixed uint reserved1[246];
+        public fixed ulong reserved2[61];
+
+        public static NV_ENC_REGISTER_RESOURCE Create()
+        {
+            var res = new NV_ENC_REGISTER_RESOURCE();
+            res.version = StructVersion(5);
+            res.bufferUsage = NV_ENC_BUFFER_USAGE.NV_ENC_INPUT_IMAGE;
+
+            return res;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_MAP_INPUT_RESOURCE
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_MAP_INPUT_RESOURCE
+    {
+        public uint version;
+        public uint subResourceIndex;
+        public void* inputResource;
+        public void* registeredResource;
+        public void* mappedResource;
+        public NV_ENC_BUFFER_FORMAT mappedBufferFmt;
+        public fixed uint reserved1[251];
+        public fixed ulong reserved2[63];
+
+        public static NV_ENC_MAP_INPUT_RESOURCE Create()
+        {
+            var mapRes = new NV_ENC_MAP_INPUT_RESOURCE();
+            mapRes.version = StructVersion(4);
+
+            return mapRes;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_PIC_PARAMS
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_PIC_PARAMS
+    {
+        public uint version;
+        public uint inputWidth;
+        public uint inputHeight;
+        public uint inputPitch;
+        public uint encodePicFlags;
+        public uint frameIdx;
+        public ulong inputTimeStamp;
+        public ulong inputDuration;
+        public void* inputBuffer;
+        public void* outputBitstream;
+        public void* completionEvent;
+        public NV_ENC_BUFFER_FORMAT bufferFmt;
+        public NV_ENC_PIC_STRUCT pictureStruct;
+        public NV_ENC_PIC_TYPE pictureType;
+        public NV_ENC_CODEC_PIC_PARAMS codecPicParams;
+        public NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE meHintCounts0;
+        public NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE meHintCounts1;
+        public void* meExternalHints;
+        public fixed uint reserved2[7];
+        public fixed ulong reserved5[2];
+        public sbyte* qpDeltaMap;
+        public uint qpDeltaMapSize;
+        public uint reservedBitFields;
+        public fixed ushort meHintRefPicDist[2];
+        public uint reserved4;
+        public void* alphaBuffer;
+        public void* meExternalSbHints;
+        public uint meSbHintsCount;
+        public uint stateBufferIdx;
+        public void* outputReconBuffer;
+        public fixed uint reserved3[284];
+        public fixed ulong reserved6[57];
+
+        public static NV_ENC_PIC_PARAMS Create()
+        {
+            var p = new NV_ENC_PIC_PARAMS();
+            p.version = StructVersion(7) | (1u << 31);
+
+            return p;
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 1536)]
+    public unsafe struct NV_ENC_CODEC_PIC_PARAMS
+    {
+        [FieldOffset(0)]
+        public NV_ENC_PIC_PARAMS_H264 h264PicParams;
+        [FieldOffset(0)]
+        public NV_ENC_PIC_PARAMS_HEVC hevcPicParams;
+        [FieldOffset(0)]
+        public NV_ENC_PIC_PARAMS_AV1 av1PicParams;
+        [FieldOffset(0)]
+        public fixed uint reserved[384];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_PIC_PARAMS_H264
+    {
+        public uint displayPOCSyntax;
+        public uint reserved3;
+        public uint refPicFlag;
+        public uint colourPlaneId;
+        public uint forceIntraRefreshWithFrameCnt;
+
+        private uint _bitFields;
+        public uint constrainedFrame { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+        public uint sliceModeDataUpdate { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint ltrMarkFrame { get => (_bitFields >> 2) & 1; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint ltrUseFrames { get => (_bitFields >> 3) & 1; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1) << 3); }
+        public uint reservedBitFields { get => (_bitFields >> 4) & 0x0FFFFFFF; set => _bitFields = (_bitFields & ~(0x0FFFFFFFu << 4)) | ((value & 0x0FFFFFFF) << 4); }
+
+        public byte* sliceTypeData;
+        public uint sliceTypeArrayCnt;
+        public uint seiPayloadArrayCnt;
+        public void* seiPayloadArray;
+        public uint sliceMode;
+        public uint sliceModeData;
+        public uint ltrMarkFrameIdx;
+        public uint ltrUseFrameBitmap;
+        public uint ltrUsageMode;
+        public uint forceIntraSliceCount;
+        public void* forceIntraSliceIdx;
+        public NV_ENC_PIC_PARAMS_H264_EXT h264ExtPicParams;
+        public NV_ENC_TIME_CODE timeCode;
+        public fixed uint reserved1[202];
+        public fixed ulong reserved2[61];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_PIC_PARAMS_HEVC
+    {
+        public uint displayPOCSyntax;
+        public uint refPicFlag;
+        public uint temporalId;
+        public uint forceIntraRefreshWithFrameCnt;
+
+        private uint _bitFields;
+        public uint constrainedFrame { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+        public uint sliceModeDataUpdate { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint ltrMarkFrame { get => (_bitFields >> 2) & 1; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint ltrUseFrames { get => (_bitFields >> 3) & 1; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1) << 3); }
+        public uint reservedBitFields { get => (_bitFields >> 4) & 0x0FFFFFFF; set => _bitFields = (_bitFields & ~(0x0FFFFFFFu << 4)) | ((value & 0x0FFFFFFF) << 4); }
+
+        public uint reserved1;
+        public byte* sliceTypeData;
+        public uint sliceTypeArrayCnt;
+        public uint sliceMode;
+        public uint sliceModeData;
+        public uint ltrMarkFrameIdx;
+        public uint ltrUseFrameBitmap;
+        public uint ltrUsageMode;
+        public uint seiPayloadArrayCnt;
+        public uint reserved;
+        public void* seiPayloadArray;
+        public NV_ENC_TIME_CODE timeCode;
+
+        public fixed uint reserved2[236];
+        public fixed ulong reserved3[61];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_PIC_PARAMS_AV1
+    {
+        public uint displayPOCSyntax;
+        public uint refPicFlag;
+        public uint temporalId;
+        public uint forceIntraRefreshWithFrameCnt;
+
+        private uint _bitFields;
+        public uint goldenFrameFlag { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+        public uint arfFrameFlag { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint arf2FrameFlag { get => (_bitFields >> 2) & 1; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint bwdFrameFlag { get => (_bitFields >> 3) & 1; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1) << 3); }
+        public uint overlayFrameFlag { get => (_bitFields >> 4) & 1; set => _bitFields = (_bitFields & ~(1u << 4)) | ((value & 1) << 4); }
+        public uint showExistingFrameFlag { get => (_bitFields >> 5) & 1; set => _bitFields = (_bitFields & ~(1u << 5)) | ((value & 1) << 5); }
+        public uint errorResilientModeFlag { get => (_bitFields >> 6) & 1; set => _bitFields = (_bitFields & ~(1u << 6)) | ((value & 1) << 6); }
+        public uint tileConfigUpdate { get => (_bitFields >> 7) & 1; set => _bitFields = (_bitFields & ~(1u << 7)) | ((value & 1) << 7); }
+        public uint enableCustomTileConfig { get => (_bitFields >> 8) & 1; set => _bitFields = (_bitFields & ~(1u << 8)) | ((value & 1) << 8); }
+        public uint filmGrainParamsUpdate { get => (_bitFields >> 9) & 1; set => _bitFields = (_bitFields & ~(1u << 9)) | ((value & 1) << 9); }
+        public uint reservedBitFields { get => (_bitFields >> 10) & 0x3FFFFF; set => _bitFields = (_bitFields & ~(0x3FFFFFu << 10)) | ((value & 0x3FFFFF) << 10); }
+
+        public uint numTileColumns;
+        public uint numTileRows;
+        public uint reserved;
+        public uint* tileWidths;
+        public uint* tileHeights;
+        public uint obuPayloadArrayCnt;
+        public uint reserved1;
+        public void* obuPayloadArray;
+        public void* filmGrainParams;
+        public fixed uint reserved2[246];
+        public fixed ulong reserved3[61];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NV_ENC_TIME_CODE
+    {
+        public NV_ENC_DISPLAY_PIC_STRUCT displayPicStruct;
+        public NV_ENC_CLOCK_TIMESTAMP_SET clockTimestamp0;
+        public NV_ENC_CLOCK_TIMESTAMP_SET clockTimestamp1;
+        public NV_ENC_CLOCK_TIMESTAMP_SET clockTimestamp2;
+        public uint skipClockTimestampInsertion;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 128)]
+    public unsafe struct NV_ENC_PIC_PARAMS_H264_EXT
+    {
+        [FieldOffset(0)]
+        public NV_ENC_PIC_PARAMS_MVC mvcPicParams;
+        [FieldOffset(0)]
+        public fixed uint reserved1[32];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_PIC_PARAMS_MVC
+    {
+        public uint version;
+        public uint viewID;
+        public uint temporalID;
+        public uint priorityID;
+        public fixed uint reserved1[12];
+        public fixed ulong reserved2[8];
+
+        public static NV_ENC_PIC_PARAMS_MVC Create()
+        {
+            return new NV_ENC_PIC_PARAMS_MVC
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_LOCK_BITSTREAM
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_LOCK_BITSTREAM
+    {
+        public uint version;
+
+        private uint _bitFields;
+        public uint doNotWait { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+        public uint ltrFrame { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+        public uint getRCStats { get => (_bitFields >> 2) & 1; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1) << 2); }
+        public uint reservedBitFields { get => (_bitFields >> 3) & 0x1FFFFFFF; set => _bitFields = (_bitFields & ~(0x1FFFFFFFu << 3)) | ((value & 0x1FFFFFFF) << 3); }
+
+        public void* outputBitstream;
+        public void* sliceOffsets;
+        public uint frameIdx;
+        public uint hwEncodeStatus;
+        public uint numSlices;
+        public uint bitstreamSizeInBytes;
+        public ulong outputTimeStamp;
+        public ulong outputDuration;
+        public void* bitstreamBufferPtr;
+        public NV_ENC_PIC_TYPE pictureType;
+        public NV_ENC_PIC_STRUCT pictureStruct;
+        public uint frameAvgQP;
+        public uint frameSatd;
+        public uint ltrFrameIdx;
+        public uint ltrFrameBitmap;
+        public uint temporalId;
+        public uint intraMBCount;
+        public uint interMBCount;
+        public int averageMVX;
+        public int averageMVY;
+        public uint alphaLayerSizeInBytes;
+        public uint outputStatsPtrSize;
+        public uint reserved;
+        public void* outputStatsPtr;
+        public uint frameIdxDisplay;
+        public fixed uint reserved1[219];
+        public fixed ulong reserved2[63];
+        public fixed uint reservedInternal[8];
+
+        public static NV_ENC_LOCK_BITSTREAM Create()
+        {
+            return new NV_ENC_LOCK_BITSTREAM
+            {
+                version = StructVersion(2) | (1u << 31)
+            };
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENC_CREATE_BITSTREAM_BUFFER
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CREATE_BITSTREAM_BUFFER
+    {
+        public uint version;
+        public uint size;
+        public NV_ENC_MEMORY_HEAP memoryHeap;
+        public uint reserved;
+        public void* bitstreamBuffer;
+        public void* bitstreamBufferPtr;
+        public fixed uint reserved1[58];
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_CREATE_BITSTREAM_BUFFER Create()
+        {
+            return new NV_ENC_CREATE_BITSTREAM_BUFFER
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NVENC Function Pointers
+    // ═══════════════════════════════════════════════════════════════
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncOpenEncodeSessionEx(
+        NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS* openSessionExParams,
+        void** encoder);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncGetEncodePresetConfigEx(
+        void* encoder,
+        GUID encodeGUID,
+        GUID presetGUID,
+        NV_ENC_TUNING_INFO tuningInfo,
+        NV_ENC_PRESET_CONFIG* presetConfig);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncInitializeEncoder(
+        void* encoder,
+        NV_ENC_INITIALIZE_PARAMS* createEncodeParams);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncRegisterResource(
+        void* encoder,
+        NV_ENC_REGISTER_RESOURCE* registerResParams);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncMapInputResource(
+        void* encoder,
+        NV_ENC_MAP_INPUT_RESOURCE* mapInputResParams);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncUnmapInputResource(
+        void* encoder,
+        void* mappedInputBuffer);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncUnregisterResource(
+        void* encoder,
+        void* registeredResource);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncCreateBitstreamBuffer(
+        void* encoder,
+        NV_ENC_CREATE_BITSTREAM_BUFFER* createBitstreamBufferParams);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncEncodePicture(
+        void* encoder,
+        NV_ENC_PIC_PARAMS* encodePicParams);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncLockBitstream(
+        void* encoder,
+        NV_ENC_LOCK_BITSTREAM* lockBitstreamBufferParams);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncUnlockBitstream(
+        void* encoder,
+        void* bitstreamBuffer);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncDestroyBitstreamBuffer(
+        void* encoder,
+        void* bitstreamBuffer);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate NVENCSTATUS NvEncDestroyEncoder(void* encoder);
+
+    // ═══════════════════════════════════════════════════════════════
+    // NV_ENCODE_API_FUNCTION_LIST
+    // Slot order must match nvEncodeAPI.h EXACTLY — any wrong offset
+    // means you call a completely different function.
+    // ═══════════════════════════════════════════════════════════════
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENCODE_API_FUNCTION_LIST
+    {
+        public uint version;
+        public uint reserved;
+        public void* nvEncOpenEncodeSession;
+        public void* nvEncGetEncodeGUIDCount;
+        public void* nvEncGetEncodeProfileGUIDCount;
+        public void* nvEncGetEncodeProfileGUIDs;
+        public void* nvEncGetEncodeGUIDs;
+        public void* nvEncGetInputFormatCount;
+        public void* nvEncGetInputFormats;
+        public void* nvEncGetEncodeCaps;
+        public void* nvEncGetEncodePresetCount;
+        public void* nvEncGetEncodePresetGUIDs;
+        public void* nvEncGetEncodePresetConfig;
+        public void* nvEncInitializeEncoder;
+        public void* nvEncCreateInputBuffer;
+        public void* nvEncDestroyInputBuffer;
+        public void* nvEncCreateBitstreamBuffer;
+        public void* nvEncDestroyBitstreamBuffer;
+        public void* nvEncEncodePicture;
+        public void* nvEncLockBitstream;
+        public void* nvEncUnlockBitstream;
+        public void* nvEncLockInputBuffer;
+        public void* nvEncUnlockInputBuffer;
+        public void* nvEncGetEncodeStats;
+        public void* nvEncGetSequenceParams;
+        public void* nvEncRegisterAsyncEvent;
+        public void* nvEncUnregisterAsyncEvent;
+        public void* nvEncMapInputResource;
+        public void* nvEncUnmapInputResource;
+        public void* nvEncDestroyEncoder;
+        public void* nvEncInvalidateRefFrames;
+        public void* nvEncOpenEncodeSessionEx;
+        public void* nvEncRegisterResource;
+        public void* nvEncUnregisterResource;
+        public void* nvEncReconfigureEncoder;
+        public void* reserved1;
+        public void* nvEncCreateMVBuffer;
+        public void* nvEncDestroyMVBuffer;
+        public void* nvEncRunMotionEstimationOnly;
+        public void* nvEncGetLastErrorString;
+        public void* nvEncSetIOCudaStreams;
+        public void* nvEncGetEncodePresetConfigEx;
+        public void* nvEncGetSequenceParamEx;
+        public void* nvEncRestoreEncoderState;
+        public void* nvEncLookaheadPicture;
+        public fixed ulong reserved2[275];
+
+        public static NV_ENCODE_API_FUNCTION_LIST Create()
+        {
+            return new NV_ENCODE_API_FUNCTION_LIST
+            {
+                version = StructVersion(2),
+            };
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Helper Functions
+    // ═══════════════════════════════════════════════════════════════
+
+    public const uint NVENCAPI_MAJOR_VERSION = 12;
+    public const uint NVENCAPI_MINOR_VERSION = 2;
+
+    public static uint GetApiVersion()
+        => NVENCAPI_MAJOR_VERSION | (NVENCAPI_MINOR_VERSION << 24);
+
+    /// <summary>
+    /// Builds the version uint embedded in every NVENC structure.
+    /// Format: bits[31:28]=0x7, bits[27:24]=minor, bits[23:16]=ver, bits[15:0]=major
+    /// </summary>
+    public static uint StructVersion(uint structVer)
+        => (0x7u << 28) | (structVer << 16) | GetApiVersion();
+
+    // ═══════════════════════════════════════════════════════════════
+    // NVENC API Loader
+    // ═══════════════════════════════════════════════════════════════
+
+    [DllImport(NvEncDll, EntryPoint = "NvEncodeAPICreateInstance")]
+    public static extern NVENCSTATUS NvEncodeAPICreateInstance(
+        NV_ENCODE_API_FUNCTION_LIST* functionList);
+
+    [DllImport(NvEncDll, EntryPoint = "NvEncodeAPIGetMaxSupportedVersion")]
+    public static extern NVENCSTATUS NvEncodeAPIGetMaxSupportedVersion(uint* version);
+}

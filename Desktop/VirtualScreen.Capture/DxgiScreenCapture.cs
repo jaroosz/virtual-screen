@@ -9,7 +9,11 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
     private CancellationTokenSource? _cts;
 
     public bool IsCapturing { get; private set; }
+
+    // OLD byte array
     public event EventHandler<FrameCapturedEventArgs>? FrameCaptured;
+    // NEW texture pointer
+    public event EventHandler<TextureCapturedEventArgs>? TextureCaptured;
 
     public void Start(string monitorDeviceName)
     {
@@ -40,20 +44,17 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
     private void CaptureLoop(string monitorDeviceName, CancellationToken token)
     {
-        // 1. Znajdź output i adapter dla danego monitora
         var (dxgiOutputPtr, adapterPtr) = GetDxgiOutput(monitorDeviceName);
         if (dxgiOutputPtr == IntPtr.Zero)
-            throw new Exception($"Nie znaleziono DXGI output dla: {monitorDeviceName}");
+            throw new Exception($"Cannot find DXGI output for: {monitorDeviceName}");
 
-        // 2. QI do IDXGIOutput1
         var iidOutput1 = new Guid("00cddea8-939b-4b83-a340-a685226666cc");
         Marshal.QueryInterface(dxgiOutputPtr, ref iidOutput1, out var output1Ptr);
         Marshal.Release(dxgiOutputPtr);
 
         if (output1Ptr == IntPtr.Zero)
-            throw new Exception("IDXGIOutput1 nie jest dostępne.");
+            throw new Exception("IDXGIOutput1 is not accessible.");
 
-        // 3. Stwórz device na tym samym adapterze co output
         var hr = NativeDxgi.D3D11CreateDevice(
             adapterPtr, 0, IntPtr.Zero, 0x20,
             IntPtr.Zero, 0, 7,
@@ -66,7 +67,6 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
         if (hr != 0)
             throw new Exception($"D3D11CreateDevice failed: 0x{hr:X8}");
 
-        // 4. DuplicateOutput
         var vtable = Marshal.ReadIntPtr(output1Ptr);
         var dupFn = Marshal.ReadIntPtr(vtable, 22 * IntPtr.Size);
         var duplicate = Marshal.GetDelegateForFunctionPointer<NativeDxgi.DuplicateOutputDelegate>(dupFn);
@@ -103,7 +103,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                 continue;
 
             if (hr != 0)
-                break; // DXGI_ERROR_ACCESS_LOST lub inny błąd
+                break;
 
             try
             {
@@ -117,29 +117,46 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                 {
                     NativeDxgi.GetTextureDesc(texturePtr, out var width, out var height);
 
-                    var stagingPtr = NativeDxgi.CreateStagingTexture(devicePtr, width, height);
-
-                    if (stagingPtr == IntPtr.Zero) continue;
-
-                    try
+                    if (TextureCaptured != null && TextureCaptured.GetInvocationList().Length > 0)
                     {
-                        NativeDxgi.CopyResource(contextPtr, stagingPtr, texturePtr);
-                        var bytes = NativeDxgi.ReadTextureBytes(contextPtr, stagingPtr, width, height);
-
-                        if (bytes != null)
+                        // ZERO-COPY PATH: Send GPU texture pointer directly
+                        TextureCaptured.Invoke(this, new TextureCapturedEventArgs
                         {
-                            FrameCaptured?.Invoke(this, new FrameCapturedEventArgs
-                            {
-                                Data = bytes,
-                                Width = width,
-                                Height = height,
-                                Timestamp = DateTime.UtcNow
-                            });
-                        }
+                            TexturePtr = texturePtr,
+                            DevicePtr = devicePtr,
+                            ContextPtr = contextPtr,
+                            Width = width,
+                            Height = height,
+                            Timestamp = DateTime.UtcNow
+                        });
                     }
-                    finally
+                    // FALLBACK: Old byte[] path (for JPEG/testing)
+                    else if (FrameCaptured != null && FrameCaptured.GetInvocationList().Length > 0)
                     {
-                        Marshal.Release(stagingPtr);
+                        var stagingPtr = NativeDxgi.CreateStagingTexture(devicePtr, width, height);
+                        if (stagingPtr != IntPtr.Zero)
+                        {
+                            try
+                            {
+                                NativeDxgi.CopyResource(contextPtr, stagingPtr, texturePtr);
+                                var bytes = NativeDxgi.ReadTextureBytes(contextPtr, stagingPtr, width, height);
+
+                                if (bytes != null)
+                                {
+                                    FrameCaptured.Invoke(this, new FrameCapturedEventArgs
+                                    {
+                                        Data = bytes,
+                                        Width = width,
+                                        Height = height,
+                                        Timestamp = DateTime.UtcNow
+                                    });
+                                }
+                            }
+                            finally
+                            {
+                                Marshal.Release(stagingPtr);
+                            }
+                        }
                     }
                 }
                 finally
@@ -160,6 +177,26 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
         var hr = NativeDxgi.CreateDXGIFactory1(ref iidFactory, out var factoryPtr);
         if (hr != 0) throw new Exception($"CreateDXGIFactory1 failed: 0x{hr:X8}");
 
+        var result = TryFindAdapterOutput(factoryPtr, monitorDeviceName, preferNvidia: true);
+        if (result.output != IntPtr.Zero)
+        {
+            Marshal.Release(factoryPtr);
+            Console.WriteLine("[DXGI] Using NVIDIA adapter for NVENC compatibility");
+            return result;
+        }
+
+        Console.WriteLine("[DXGI] NVIDIA adapter not found, using fallback adapter");
+        result = TryFindAdapterOutput(factoryPtr, monitorDeviceName, preferNvidia: false);
+        Marshal.Release(factoryPtr);
+
+        return result;
+    }
+
+    private static (IntPtr output, IntPtr adapter) TryFindAdapterOutput(
+    IntPtr factoryPtr,
+    string monitorDeviceName,
+    bool preferNvidia)
+    {
         uint adapterIndex = 0;
         while (true)
         {
@@ -168,42 +205,75 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
             var enumAdapters = Marshal.GetDelegateForFunctionPointer<NativeDxgi.EnumAdaptersDelegate>(enumAdaptersFn);
 
             var result = enumAdapters(factoryPtr, adapterIndex, out var adapterPtr);
-            if (result != 0) break; // DXGI_ERROR_NOT_FOUND
+            if (result != 0) break;
 
-            uint outputIndex = 0;
-            while (true)
+            try
             {
+                // Get adapter description to check vendor
                 var adapterVtable = Marshal.ReadIntPtr(adapterPtr);
-                var enumOutputsFn = Marshal.ReadIntPtr(adapterVtable, 7 * IntPtr.Size);
-                var enumOutputs = Marshal.GetDelegateForFunctionPointer<NativeDxgi.EnumOutputsDelegate>(enumOutputsFn);
+                var getDescFn = Marshal.ReadIntPtr(adapterVtable, 8 * IntPtr.Size);
+                var getAdapterDesc = Marshal.GetDelegateForFunctionPointer<NativeDxgi.GetAdapterDescDelegate>(getDescFn);
+                getAdapterDesc(adapterPtr, out var adapterDesc);
 
-                var outResult = enumOutputs(adapterPtr, outputIndex, out var outputPtr);
-                if (outResult != 0) break;
-
-                var outVtable = Marshal.ReadIntPtr(outputPtr);
-                var getDescFn = Marshal.ReadIntPtr(outVtable, 7 * IntPtr.Size);
-                var getDesc = Marshal.GetDelegateForFunctionPointer<NativeDxgi.GetOutputDescDelegate>(getDescFn);
-                getDesc(outputPtr, out var desc);
-
-                var name = new string(desc.DeviceName).TrimEnd('\0');
-                Console.WriteLine($"DXGI output: {name}");
-
-                if (name.Equals(monitorDeviceName, StringComparison.OrdinalIgnoreCase))
+                // VendorId: 0x10DE = NVIDIA, 0x8086 = Intel, 0x1002 = AMD
+                bool isNvidia = adapterDesc.VendorId == 0x10DE;
+                string vendorName = adapterDesc.VendorId switch
                 {
-                    // Nie zwalniamy adapterPtr — zwracamy go razem z outputem
-                    Marshal.Release(factoryPtr);
-                    return (outputPtr, adapterPtr);
+                    0x10DE => "NVIDIA",
+                    0x8086 => "Intel",
+                    0x1002 => "AMD",
+                    _ => $"Unknown (0x{adapterDesc.VendorId:X4})"
+                };
+
+                Console.WriteLine($"[DXGI] Adapter {adapterIndex}: {vendorName} (VendorID: 0x{adapterDesc.VendorId:X4})");
+
+                // If we're filtering for NVIDIA and this isn't NVIDIA, skip it
+                if (preferNvidia && !isNvidia)
+                {
+                    Marshal.Release(adapterPtr);
+                    adapterIndex++;
+                    continue;
                 }
 
-                Marshal.Release(outputPtr);
-                outputIndex++;
+                // Try to find the monitor on this adapter
+                uint outputIndex = 0;
+                while (true)
+                {
+                    var enumOutputsFn = Marshal.ReadIntPtr(adapterVtable, 7 * IntPtr.Size);
+                    var enumOutputs = Marshal.GetDelegateForFunctionPointer<NativeDxgi.EnumOutputsDelegate>(enumOutputsFn);
+
+                    var outResult = enumOutputs(adapterPtr, outputIndex, out var outputPtr);
+                    if (outResult != 0) break;
+
+                    var outVtable = Marshal.ReadIntPtr(outputPtr);
+                    var getOutputDescFn = Marshal.ReadIntPtr(outVtable, 7 * IntPtr.Size);
+                    var getOutputDesc = Marshal.GetDelegateForFunctionPointer<NativeDxgi.GetOutputDescDelegate>(getOutputDescFn);
+                    getOutputDesc(outputPtr, out var outputDesc);
+
+                    var name = new string(outputDesc.DeviceName).TrimEnd('\0');
+                    Console.WriteLine($"Output {outputIndex}: {name}");
+
+                    if (name.Equals(monitorDeviceName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine($"Match found on {vendorName} adapter!");
+                        return (outputPtr, adapterPtr);
+                    }
+
+                    Marshal.Release(outputPtr);
+                    outputIndex++;
+                }
+
+                Marshal.Release(adapterPtr);
+            }
+            catch
+            {
+                Marshal.Release(adapterPtr);
+                throw;
             }
 
-            Marshal.Release(adapterPtr);
             adapterIndex++;
         }
 
-        Marshal.Release(factoryPtr);
         return (IntPtr.Zero, IntPtr.Zero);
     }
 

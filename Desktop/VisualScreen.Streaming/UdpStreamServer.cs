@@ -1,6 +1,8 @@
-﻿using System.Net;
+﻿using System.Buffers;
+using System.Net;
 using System.Net.Sockets;
 using VirtualScreen.Core;
+using VirtualScreen.Encoding;
 using VirtualScreenViewer.Core.Protocol;
 
 namespace VirtualScreen.Streaming;
@@ -12,6 +14,13 @@ public class UdpStreamServer : IStreamServer
     private Task? _listenerTask;
     private IPEndPoint? _clientEndpoint;
     private uint _sequenceNumber;
+
+    private NvencH265Encoder? _encoder;
+    private IScreenCapture? _screenCapture;
+
+    private bool _testMode = true;
+    private int _encodedFrameCount = 0;
+    private long _totalEncodedBytes = 0;
 
     public bool IsRunning { get; private set; }
     public int Port { get; private set; }
@@ -39,6 +48,9 @@ public class UdpStreamServer : IStreamServer
         _cts?.Cancel();
         _udpServer?.Close();
 
+        _encoder?.Dispose();
+        _encoder = null;
+
         _cts = null;
         _udpServer = null;
         _clientEndpoint = null;
@@ -46,30 +58,68 @@ public class UdpStreamServer : IStreamServer
         IsRunning = false;
     }
 
-    public void SendFrame(byte[] frameData, int width, int height)
+    public void SetScreenCapture(IScreenCapture screenCapture)
     {
-        if (_clientEndpoint == null || _udpServer == null) return;
+        _screenCapture = screenCapture;
+        _screenCapture.TextureCaptured += OnTextureCaptured;
+    }
+
+    private void OnTextureCaptured(object? sender, TextureCapturedEventArgs e)
+    {
+        if (!_testMode && (_clientEndpoint == null || _udpServer == null))
+        {
+            return;
+        }
 
         try
         {
-            var jpegData = ConvertToJpeg(frameData, width, height);
-
-            var fragments = StreamPacket.CreateFragments(jpegData, width, height, _sequenceNumber++);
-
-            foreach (var fragment in fragments)
+            if (_encoder == null)
             {
-                var data = fragment.ToBytes();
-                _udpServer.Send(data, data.Length, _clientEndpoint);
+                _encoder = new NvencH265Encoder(e.DevicePtr, e.Width, e.Height, bitrate: 15_000_000);
+                Console.WriteLine($"[NVENC] Encoder initialized for {e.Width}x{e.Height}");
+            }
 
-                if (fragments.Count > 1)
+            var result = _encoder.EncodeTexture(e.TexturePtr);
+
+            if (result == null) return;
+
+            var (buffer, length) = result.Value;
+
+            _encodedFrameCount++;
+            _totalEncodedBytes += length;
+
+            if (_encodedFrameCount % 60 == 0)
+            {
+                var avgSize = _totalEncodedBytes / _encodedFrameCount;
+                Console.WriteLine($"[NVENC] Frame #{_encodedFrameCount}: {length:N0} bytes (avg: {avgSize:N0} bytes/frame)");
+            }
+
+            try
+            {
+                var h265Data = buffer.AsSpan(0, length).ToArray();
+                var fragments = StreamPacket.CreateFragments(h265Data, e.Width, e.Height, _sequenceNumber++);
+
+                if (_clientEndpoint != null && _udpServer != null)
                 {
-                    Thread.Sleep(1);
+                    foreach (var fragment in fragments)
+                    {
+                        var data = fragment.ToBytes();
+                        _udpServer.Send(data, data.Length, _clientEndpoint);
+                    }
                 }
+                else if (_testMode && _encodedFrameCount == 1)
+                {
+                    Console.WriteLine($"[UDP] Would send {fragments.Count} fragment(s) (no client connected)");
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Send error: {ex.Message}");
+            Console.WriteLine($"Encode/Send error: {ex.Message}");
         }
     }
 
@@ -87,7 +137,6 @@ public class UdpStreamServer : IStreamServer
                     _clientEndpoint = result.RemoteEndPoint;
                     Console.WriteLine($"Client connected from {_clientEndpoint}");
 
-                    // Send response
                     var response = new StreamPacket
                     {
                         Type = PacketType.ConnectionResponse,
@@ -104,31 +153,6 @@ public class UdpStreamServer : IStreamServer
             catch { }
         }
     }
-
-    private byte[] ConvertToJpeg(byte[] bgraData, int width, int height)
-    {
-        var info = new SkiaSharp.SKImageInfo(width, height,
-            SkiaSharp.SKColorType.Bgra8888,
-            SkiaSharp.SKAlphaType.Premul);
-
-        var handle = System.Runtime.InteropServices.GCHandle.Alloc(
-            bgraData, System.Runtime.InteropServices.GCHandleType.Pinned);
-
-        try
-        {
-            var ptr = handle.AddrOfPinnedObject();
-            using var skBitmap = new SkiaSharp.SKBitmap(info);
-            skBitmap.InstallPixels(info, ptr, info.RowBytes);
-
-            using var image = SkiaSharp.SKImage.FromBitmap(skBitmap);
-            using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 80);
-            return data.ToArray();
-        }
-        finally
-        {
-            handle.Free();
-        }
-    }
-
+    
     public void Dispose() => Stop();
 }

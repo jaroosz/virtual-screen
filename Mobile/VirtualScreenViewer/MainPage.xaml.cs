@@ -5,7 +5,7 @@ namespace VirtualScreenViewer;
 public partial class MainPage : ContentPage
 {
     private readonly StreamReceiver _receiver;
-    private const int StreamPort = 5555;
+    private const int StreamPort = 8888;
 
     public MainPage()
     {
@@ -64,11 +64,22 @@ public partial class MainPage : ContentPage
         });
     }
 
-    private void OnConnectionStatusChanged(object? sender, string status)
+    private void OnConnectionStatusChanged(object? sender, ConnectionStatusEventArgs e)
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            StatusLabel.Text = status;
+            StatusLabel.Text = e.Message;
+
+            // Zmiana koloru w zależności od statusu
+            StatusLabel.TextColor = e.Status switch
+            {
+                ConnectionStatus.Disconnected => Colors.Gray,
+                ConnectionStatus.Connecting => Colors.Orange,
+                ConnectionStatus.Connected => Colors.Green,
+                ConnectionStatus.Warning => Colors.Orange,
+                ConnectionStatus.Error => Colors.Red,
+                _ => Colors.White
+            };
         });
     }
 

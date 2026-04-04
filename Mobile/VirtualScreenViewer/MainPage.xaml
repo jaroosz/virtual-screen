@@ -9,7 +9,7 @@
         <VerticalStackLayout Grid.Row="0" Spacing="10" Padding="10">
             <Label Text="Desktop IP Address:" FontSize="14"/>
             <Entry x:Name="IpAddressEntry" 
-                   Text="192.168.1.100"
+                   Text="192.168.0.24"
                    Placeholder="Enter desktop IP"
                    Keyboard="Default"/>
 

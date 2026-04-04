@@ -10,13 +10,18 @@ public class StreamReceiver : IDisposable
     private UdpClient? _udpClient;
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
+    private DateTime _lastFrameReceived;
+    private int _frameCount;
+    private DateTime _fpsCounterStart;
 
     private readonly ConcurrentDictionary<uint, FrameAssembler> _frameAssemblers = new();
 
     public event EventHandler<FrameReceivedEventArgs>? FrameReceived;
-    public event EventHandler<string>? ConnectionStatusChanged;
+    public event EventHandler<ConnectionStatusEventArgs>? ConnectionStatusChanged;
 
     public bool IsConnected { get; private set; }
+    public int CurrentFps { get; private set; }
+    public string? CurrentResolution { get; private set; }
 
     public async Task ConnectAsync(string desktopIp, int port)
     {
@@ -24,6 +29,9 @@ public class StreamReceiver : IDisposable
 
         try
         {
+            // Status: Rozpoczęcie łączenia
+            RaiseStatusChanged(ConnectionStatus.Connecting, $"Connecting to {desktopIp}:{port}...");
+
             _udpClient = new UdpClient();
             _udpClient.Client.ReceiveBufferSize = 1024 * 1024;
             _udpClient.Connect(desktopIp, port);
@@ -40,12 +48,50 @@ public class StreamReceiver : IDisposable
             var data = requestPacket.ToBytes();
             await _udpClient.SendAsync(data, data.Length);
 
-            IsConnected = true;
-            ConnectionStatusChanged?.Invoke(this, "Connected");
+            RaiseStatusChanged(ConnectionStatus.Connecting, "Waiting for response...");
+
+            // Czekaj na pierwszą ramkę przez max 5 sekund
+            var waitTask = Task.Run(async () =>
+            {
+                for (int i = 0; i < 50; i++)
+                {
+                    await Task.Delay(100);
+                    if (_lastFrameReceived != default)
+                        return true;
+                }
+                return false;
+            });
+
+            var receivedData = await waitTask;
+
+            if (receivedData)
+            {
+                IsConnected = true;
+                _fpsCounterStart = DateTime.Now;
+                RaiseStatusChanged(ConnectionStatus.Connected, $"Connected to {desktopIp}");
+            }
+            else
+            {
+                // Timeout - brak odpowiedzi
+                Disconnect();
+                RaiseStatusChanged(ConnectionStatus.Error, "Connection timeout - no response from server");
+                throw new TimeoutException("No response from desktop. Make sure the desktop application is running.");
+            }
+        }
+        catch (SocketException ex)
+        {
+            RaiseStatusChanged(ConnectionStatus.Error, $"Network error: {ex.Message}");
+            Disconnect();
+            throw new Exception($"Cannot connect to {desktopIp}:{port}. Check IP address and network.", ex);
+        }
+        catch (TimeoutException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            ConnectionStatusChanged?.Invoke(this, $"Error: {ex.Message}");
+            RaiseStatusChanged(ConnectionStatus.Error, $"Error: {ex.Message}");
+            Disconnect();
             throw;
         }
     }
@@ -69,6 +115,12 @@ public class StreamReceiver : IDisposable
                 {
                     HandleFragment(packet);
                 }
+
+                // Sprawdź timeout połączenia
+                if (IsConnected && (DateTime.Now - _lastFrameReceived).TotalSeconds > 10)
+                {
+                    RaiseStatusChanged(ConnectionStatus.Warning, "No frames received for 10 seconds");
+                }
             }
             catch (OperationCanceledException)
             {
@@ -76,7 +128,7 @@ public class StreamReceiver : IDisposable
             }
             catch (Exception ex)
             {
-                ConnectionStatusChanged?.Invoke(this, $"Receive error: {ex.Message}");
+                RaiseStatusChanged(ConnectionStatus.Error, $"Receive error: {ex.Message}");
             }
         }
     }
@@ -107,6 +159,25 @@ public class StreamReceiver : IDisposable
 
     private void EmitFrame(StreamPacket packet)
     {
+        _lastFrameReceived = DateTime.Now;
+        _frameCount++;
+
+        // Aktualizuj rozdzielczość
+        CurrentResolution = $"{packet.Width}x{packet.Height}";
+
+        // Oblicz FPS co sekundę
+        var elapsed = (DateTime.Now - _fpsCounterStart).TotalSeconds;
+        if (elapsed >= 1.0)
+        {
+            CurrentFps = (int)(_frameCount / elapsed);
+            _frameCount = 0;
+            _fpsCounterStart = DateTime.Now;
+
+            // Aktualizuj status z informacjami
+            RaiseStatusChanged(ConnectionStatus.Connected,
+                $"Connected • {CurrentResolution} • {CurrentFps} FPS");
+        }
+
         FrameReceived?.Invoke(this, new FrameReceivedEventArgs
         {
             ImageData = packet.Payload,
@@ -117,9 +188,19 @@ public class StreamReceiver : IDisposable
         });
     }
 
+    private void RaiseStatusChanged(ConnectionStatus status, string message)
+    {
+        ConnectionStatusChanged?.Invoke(this, new ConnectionStatusEventArgs
+        {
+            Status = status,
+            Message = message,
+            Timestamp = DateTime.Now
+        });
+    }
+
     public void Disconnect()
     {
-        if (!IsConnected) return;
+        if (!IsConnected && _udpClient == null) return;
 
         _cts?.Cancel();
         _receiveTask?.Wait(1000);
@@ -129,8 +210,12 @@ public class StreamReceiver : IDisposable
         _cts = null;
         _frameAssemblers.Clear();
         IsConnected = false;
+        _lastFrameReceived = default;
+        _frameCount = 0;
+        CurrentFps = 0;
+        CurrentResolution = null;
 
-        ConnectionStatusChanged?.Invoke(this, "Disconnected");
+        RaiseStatusChanged(ConnectionStatus.Disconnected, "Disconnected");
     }
 
     public void Dispose()
@@ -184,6 +269,22 @@ public class StreamReceiver : IDisposable
             return result;
         }
     }
+}
+
+public enum ConnectionStatus
+{
+    Disconnected,
+    Connecting,
+    Connected,
+    Warning,
+    Error
+}
+
+public class ConnectionStatusEventArgs : EventArgs
+{
+    public ConnectionStatus Status { get; init; }
+    public string Message { get; init; } = string.Empty;
+    public DateTime Timestamp { get; init; }
 }
 
 public class FrameReceivedEventArgs : EventArgs

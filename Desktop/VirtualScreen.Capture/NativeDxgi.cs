@@ -21,6 +21,7 @@ internal static class NativeDxgi
     public delegate int AcquireNextFrameDelegate(IntPtr self, uint timeoutMs, out DXGI_OUTDUPL_FRAME_INFO pInfo, out IntPtr ppDesktopResource);
     public delegate int ReleaseFrameDelegate(IntPtr self);
     public delegate int EnumAdaptersDelegate(IntPtr self, uint index, out IntPtr ppAdapter);
+    public delegate int GetAdapterDescDelegate(IntPtr self, out DXGI_ADAPTER_DESC pDesc);
 
     // ── Wrappers ───────────────────────────────────────────────────────────────
 
@@ -158,6 +159,21 @@ internal static class NativeDxgi
     {
         public IntPtr pData;
         public uint RowPitch, DepthPitch;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct DXGI_ADAPTER_DESC
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string Description;
+        public uint VendorId;
+        public uint DeviceId;
+        public uint SubSysId;
+        public uint Revision;
+        public IntPtr DedicatedVideoMemory;
+        public IntPtr DedicatedSystemMemory;
+        public IntPtr SharedSystemMemory;
+        public long AdapterLuid;
     }
 
     private delegate void GetDescDelegate(IntPtr self, [Out] int[] desc);

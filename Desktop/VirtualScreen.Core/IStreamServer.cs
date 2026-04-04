@@ -8,5 +8,4 @@ public interface IStreamServer : IDisposable
     int Port { get; }
     void Start(int port);
     void Stop();
-    void SendFrame(byte[] frameData, int width, int height);
 }

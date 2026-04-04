@@ -1,4 +1,5 @@
 ﻿using VirtualScreen.Core;
+using VirtualScreen.Streaming;
 
 namespace VirtualScreen.App;
 
@@ -18,8 +19,6 @@ public class AppController
         _driverManager = driverManager;
         _screenCapture = screenCapture;
         _streamServer = streamServer;
-
-        _screenCapture.FrameCaptured += OnFrameCaptured;
     }
 
     public async Task StartAsync(int port)
@@ -45,6 +44,13 @@ public class AppController
         // start HTTP server
         _streamServer.Start(port);
 
+        // connect screen capture to server
+        if (_streamServer is UdpStreamServer udpServer)
+        {
+            Console.WriteLine("UDP stream active.");
+            udpServer.SetScreenCapture(_screenCapture);
+        }
+
         // capture virtual monitor screen
         _screenCapture.Start(monitorName);
 
@@ -59,10 +65,5 @@ public class AppController
         _streamServer.Stop();
 
         IsRunning = false;
-    }
-
-    private void OnFrameCaptured(object? sender, FrameCapturedEventArgs e)
-    {
-        _streamServer.SendFrame(e.Data, e.Width, e.Height);
     }
 }
