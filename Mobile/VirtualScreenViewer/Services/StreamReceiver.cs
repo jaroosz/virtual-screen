@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using VirtualScreenViewer.Core.Protocol;
 
 namespace VirtualScreenViewer.Services;
@@ -10,18 +11,25 @@ public class StreamReceiver : IDisposable
     private UdpClient? _udpClient;
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
-    private DateTime _lastFrameReceived;
-    private int _frameCount;
-    private DateTime _fpsCounterStart;
+    private Task? _decodeTask;
+    private bool _connectionResponseReceived;
 
+    private Channel<StreamPacket>? _frameChannel;
     private readonly ConcurrentDictionary<uint, FrameAssembler> _frameAssemblers = new();
 
+    private IVideoDecoder? _decoder;
+    private bool _decoderInitialized = false;
+
     public event EventHandler<FrameReceivedEventArgs>? FrameReceived;
+    public event EventHandler<DecodedFrameEventArgs>? DecodedFrameReceived;
     public event EventHandler<ConnectionStatusEventArgs>? ConnectionStatusChanged;
 
     public bool IsConnected { get; private set; }
-    public int CurrentFps { get; private set; }
-    public string? CurrentResolution { get; private set; }
+
+    public StreamReceiver(IVideoDecoder? decoder = null)
+    {
+        _decoder = decoder;
+    }
 
     public async Task ConnectAsync(string desktopIp, int port)
     {
@@ -29,15 +37,33 @@ public class StreamReceiver : IDisposable
 
         try
         {
-            // Status: Rozpoczęcie łączenia
-            RaiseStatusChanged(ConnectionStatus.Connecting, $"Connecting to {desktopIp}:{port}...");
-
             _udpClient = new UdpClient();
-            _udpClient.Client.ReceiveBufferSize = 1024 * 1024;
+            _udpClient.Client.ReceiveBufferSize = 4 * 1024 * 1024; // 4MB
             _udpClient.Connect(desktopIp, port);
 
             _cts = new CancellationTokenSource();
-            _receiveTask = Task.Run(() => ReceiveLoop(_cts.Token));
+
+            // channel with only 4 frames
+            _frameChannel = Channel.CreateBounded<StreamPacket>(new BoundedChannelOptions(4)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = true
+            });
+
+            // for receiving UDP
+            _receiveTask = Task.Factory.StartNew(
+                () => ReceiveLoop(_cts.Token),
+                _cts.Token,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default).Unwrap();
+
+            // for decoding
+            _decodeTask = Task.Factory.StartNew(
+                () => DecodeLoop(_cts.Token),
+                _cts.Token,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default).Unwrap();
 
             var requestPacket = new StreamPacket
             {
@@ -48,49 +74,26 @@ public class StreamReceiver : IDisposable
             var data = requestPacket.ToBytes();
             await _udpClient.SendAsync(data, data.Length);
 
-            RaiseStatusChanged(ConnectionStatus.Connecting, "Waiting for response...");
-
-            // Czekaj na pierwszą ramkę przez max 5 sekund
-            var waitTask = Task.Run(async () =>
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (DateTime.UtcNow < deadline)
             {
-                for (int i = 0; i < 50; i++)
+                await Task.Delay(50);
+                if (_connectionResponseReceived)
                 {
-                    await Task.Delay(100);
-                    if (_lastFrameReceived != default)
-                        return true;
+                    IsConnected = true;
+                    return;
                 }
-                return false;
-            });
-
-            var receivedData = await waitTask;
-
-            if (receivedData)
-            {
-                IsConnected = true;
-                _fpsCounterStart = DateTime.Now;
-                RaiseStatusChanged(ConnectionStatus.Connected, $"Connected to {desktopIp}");
             }
-            else
-            {
-                // Timeout - brak odpowiedzi
-                Disconnect();
-                RaiseStatusChanged(ConnectionStatus.Error, "Connection timeout - no response from server");
-                throw new TimeoutException("No response from desktop. Make sure the desktop application is running.");
-            }
+
+            Disconnect();
         }
         catch (SocketException ex)
         {
-            RaiseStatusChanged(ConnectionStatus.Error, $"Network error: {ex.Message}");
             Disconnect();
-            throw new Exception($"Cannot connect to {desktopIp}:{port}. Check IP address and network.", ex);
+            throw new Exception($"Cannot connect to {desktopIp}:{port}.", ex);
         }
-        catch (TimeoutException)
+        catch
         {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            RaiseStatusChanged(ConnectionStatus.Error, $"Error: {ex.Message}");
             Disconnect();
             throw;
         }
@@ -105,43 +108,42 @@ public class StreamReceiver : IDisposable
                 var result = await _udpClient.ReceiveAsync(ct);
                 var packet = StreamPacket.FromBytes(result.Buffer);
 
-                if (packet == null) continue;
+                if (packet == null)
+                    continue;
 
-                if (packet.Type == PacketType.VideoFrame)
+                switch (packet.Type)
                 {
-                    EmitFrame(packet);
-                }
-                else if (packet.Type == PacketType.VideoFrameFragment)
-                {
-                    HandleFragment(packet);
-                }
+                    case PacketType.ConnectionResponse:
+                        _connectionResponseReceived = true;
+                        break;
 
-                // Sprawdź timeout połączenia
-                if (IsConnected && (DateTime.Now - _lastFrameReceived).TotalSeconds > 10)
-                {
-                    RaiseStatusChanged(ConnectionStatus.Warning, "No frames received for 10 seconds");
+                    case PacketType.VideoFrame:
+                        _frameChannel?.Writer.TryWrite(packet);
+                        break;
+
+                    case PacketType.VideoFrameFragment:
+                        HandleFragment(packet);
+                        break;
                 }
             }
             catch (OperationCanceledException)
             {
                 break;
             }
-            catch (Exception ex)
-            {
-                RaiseStatusChanged(ConnectionStatus.Error, $"Receive error: {ex.Message}");
-            }
+            catch (Exception ex) { Console.WriteLine(ex.Message); }
         }
+
+        _frameChannel?.Writer.TryComplete();
     }
 
     private void HandleFragment(StreamPacket packet)
     {
         var assembler = _frameAssemblers.GetOrAdd(
             packet.SequenceNumber,
-            _ => new FrameAssembler(packet.TotalFragments, packet.Width, packet.Height, packet.Timestamp));
+            _ => new FrameAssembler(packet.TotalFragments, packet.Width, packet.Height, packet.Timestamp, packet.FrameNumber));
 
         if (assembler.AddFragment(packet.FragmentIndex, packet.Payload))
         {
-            // Wszystkie fragmenty zebrane
             var completeFrame = new StreamPacket
             {
                 Type = PacketType.VideoFrame,
@@ -149,52 +151,72 @@ public class StreamReceiver : IDisposable
                 Timestamp = assembler.Timestamp,
                 Width = assembler.Width,
                 Height = assembler.Height,
-                Payload = assembler.GetCompleteData()
+                FrameNumber = assembler.FrameNumber,
+                Payload = assembler.GetCompleteData() // only once
             };
 
-            EmitFrame(completeFrame);
+            _frameChannel?.Writer.TryWrite(completeFrame);
             _frameAssemblers.TryRemove(packet.SequenceNumber, out _);
+
+            CleanupStaleAssemblers(packet.SequenceNumber);
         }
     }
 
-    private void EmitFrame(StreamPacket packet)
+    private void CleanupStaleAssemblers(uint currentSeq)
     {
-        _lastFrameReceived = DateTime.Now;
-        _frameCount++;
-
-        // Aktualizuj rozdzielczość
-        CurrentResolution = $"{packet.Width}x{packet.Height}";
-
-        // Oblicz FPS co sekundę
-        var elapsed = (DateTime.Now - _fpsCounterStart).TotalSeconds;
-        if (elapsed >= 1.0)
+        const uint staleThreshold = 30;
+        foreach (var key in _frameAssemblers.Keys)
         {
-            CurrentFps = (int)(_frameCount / elapsed);
-            _frameCount = 0;
-            _fpsCounterStart = DateTime.Now;
-
-            // Aktualizuj status z informacjami
-            RaiseStatusChanged(ConnectionStatus.Connected,
-                $"Connected • {CurrentResolution} • {CurrentFps} FPS");
+            if (currentSeq - key > staleThreshold)
+                _frameAssemblers.TryRemove(key, out _);
         }
-
-        FrameReceived?.Invoke(this, new FrameReceivedEventArgs
-        {
-            ImageData = packet.Payload,
-            Width = packet.Width,
-            Height = packet.Height,
-            SequenceNumber = packet.SequenceNumber,
-            Timestamp = packet.Timestamp
-        });
     }
 
-    private void RaiseStatusChanged(ConnectionStatus status, string message)
+    private async Task DecodeLoop(CancellationToken ct)
     {
-        ConnectionStatusChanged?.Invoke(this, new ConnectionStatusEventArgs
+        if (_frameChannel == null)
+            return;
+
+        await foreach (var packet in _frameChannel.Reader.ReadAllAsync(ct))
         {
-            Status = status,
-            Message = message,
-            Timestamp = DateTime.Now
+            try
+            {
+                if (_decoder != null && !_decoderInitialized && packet.Width > 0 && packet.Height > 0)
+                {
+                    try
+                    {
+                        _decoder.FrameDecoded += OnDecoderFrameDecoded;
+                        _decoder.Initialize(packet.Width, packet.Height);
+                        _decoderInitialized = true;
+                        System.Diagnostics.Debug.WriteLine($"Decoder initialized");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Init error: {ex.Message}");
+                    }
+                }
+
+                if (_decoder != null && _decoderInitialized)
+                {
+                    _decoder.DecodeFrame(packet.Payload, packet.FrameNumber);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex.Message);
+            }
+        }
+    }
+
+    private void OnDecoderFrameDecoded(object? sender, DecodedFrameEventArgs e)
+    {
+        DecodedFrameReceived?.Invoke(this, new DecodedFrameEventArgs
+        {
+            RgbaData = e.RgbaData,
+            Width = e.Width,
+            Height = e.Height,
+            Timestamp = e.Timestamp,
+            FrameNumber = e.FrameNumber
         });
     }
 
@@ -203,24 +225,29 @@ public class StreamReceiver : IDisposable
         if (!IsConnected && _udpClient == null) return;
 
         _cts?.Cancel();
-        _receiveTask?.Wait(1000);
-        _udpClient?.Close();
+        _frameChannel?.Writer.TryComplete();
 
+        _receiveTask?.Wait(2000);
+        _decodeTask?.Wait(2000);
+
+        _udpClient?.Close();
         _udpClient = null;
         _cts = null;
+        _frameChannel = null;
         _frameAssemblers.Clear();
-        IsConnected = false;
-        _lastFrameReceived = default;
-        _frameCount = 0;
-        CurrentFps = 0;
-        CurrentResolution = null;
 
-        RaiseStatusChanged(ConnectionStatus.Disconnected, "Disconnected");
+        IsConnected = false;
+        _connectionResponseReceived = false;
+        if (_decoder != null)
+            _decoder.FrameDecoded -= OnDecoderFrameDecoded;
+
+        _decoderInitialized = false;
     }
 
     public void Dispose()
     {
         Disconnect();
+        _decoder?.Dispose();
     }
 
     private class FrameAssembler
@@ -228,18 +255,21 @@ public class StreamReceiver : IDisposable
         private readonly byte[][] _fragments;
         private readonly bool[] _received;
         private int _receivedCount;
+        private byte[]? _cachedResult;
 
         public int Width { get; }
         public int Height { get; }
         public long Timestamp { get; }
+        public uint FrameNumber { get; }
 
-        public FrameAssembler(int totalFragments, int width, int height, long timestamp)
+        public FrameAssembler(int totalFragments, int width, int height, long timestamp, uint frameNumber = 0)
         {
             _fragments = new byte[totalFragments][];
             _received = new bool[totalFragments];
             Width = width;
             Height = height;
             Timestamp = timestamp;
+            FrameNumber = frameNumber;
         }
 
         public bool AddFragment(int index, byte[] data)
@@ -256,17 +286,19 @@ public class StreamReceiver : IDisposable
 
         public byte[] GetCompleteData()
         {
+            if (_cachedResult != null) return _cachedResult;
+
             var totalSize = _fragments.Sum(f => f.Length);
-            var result = new byte[totalSize];
+            _cachedResult = new byte[totalSize];
             var offset = 0;
 
             foreach (var fragment in _fragments)
             {
-                Array.Copy(fragment, 0, result, offset, fragment.Length);
+                Array.Copy(fragment, 0, _cachedResult, offset, fragment.Length);
                 offset += fragment.Length;
             }
 
-            return result;
+            return _cachedResult;
         }
     }
 }

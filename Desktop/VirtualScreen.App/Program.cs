@@ -9,7 +9,7 @@ static extern bool SetProcessDpiAwarenessContext(int value);
 
 SetProcessDpiAwarenessContext(-4);
 
-var port = 8888;
+var port = 5555;
 var portArg = args.FirstOrDefault(a => a.StartsWith("--port="));
 if (portArg != null && int.TryParse(portArg["--port=".Length..], out var parsed))
     port = parsed;
@@ -20,7 +20,6 @@ var controller = new AppController(
     new DriverManager(driverPath),
     new DxgiScreenCapture(),
     new UdpStreamServer());
-    //new MjpegStreamServer());
 
 var thread = new Thread(() =>
 {
@@ -30,7 +29,6 @@ thread.SetApartmentState(ApartmentState.STA);
 thread.Start();
 thread.Join();
 
-Console.WriteLine($"  Local:   http://localhost:{port}/");
 Console.WriteLine("Press Ctrl+C to stop.");
 
 var tcs = new TaskCompletionSource();

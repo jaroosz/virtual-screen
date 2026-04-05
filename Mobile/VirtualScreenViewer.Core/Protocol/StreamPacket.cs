@@ -3,15 +3,16 @@
 public enum PacketType : byte
 {
     VideoFrame = 1,
-    ConnectionRequest = 2,
-    ConnectionResponse = 3,
-    Heartbeat = 4,
-    VideoFrameFragment = 5
+    VideoFrameFragment = 2,
+    ConnectionRequest = 3,
+    ConnectionResponse = 4,
+    Heartbeat = 5
 }
 
 public class StreamPacket
 {
     private const int MaxUdpSize = 60000;
+    private const int HeaderSize = 50;
 
     public PacketType Type { get; set; }
     public uint SequenceNumber { get; set; }
@@ -21,8 +22,19 @@ public class StreamPacket
 
     public ushort FragmentIndex { get; set; }
     public ushort TotalFragments { get; set; }
-
+    public uint FrameNumber { get; set; }
     public byte[] Payload { get; set; } = Array.Empty<byte>();
+
+    // Header layout (50 bytes):
+    // [0]      Type          (1)
+    // [1-4]    SequenceNumber(4)
+    // [5-12]   Timestamp     (8)
+    // [13-16]  Width         (4)
+    // [17-20]  Height        (4)
+    // [21-22]  FragmentIndex (2)
+    // [23-24]  TotalFragments(2)
+    // [25-28]  FrameNumber   (4)
+    // [29-49]  padding       (21)
 
     // serialize to byte array for UDP
     public byte[] ToBytes()
@@ -37,20 +49,29 @@ public class StreamPacket
         writer.Write(Height);
         writer.Write(FragmentIndex);
         writer.Write(TotalFragments);
-        writer.Write(Payload.Length);
-        writer.Write(Payload);
+        writer.Write(FrameNumber);
 
+        var paddingNeeded = HeaderSize - (int)ms.Position;
+        if (paddingNeeded > 0)
+        {
+            writer.Write(new byte[paddingNeeded]);
+        }
+
+        writer.Write(Payload);
         return ms.ToArray();
     }
 
     public static StreamPacket? FromBytes(byte[] data)
     {
+        if (data.Length < HeaderSize)
+            return null;
+
         try
         {
             using var ms = new MemoryStream(data);
             using var reader = new BinaryReader(ms);
 
-            return new StreamPacket
+            var packet = new StreamPacket
             {
                 Type = (PacketType)reader.ReadByte(),
                 SequenceNumber = reader.ReadUInt32(),
@@ -59,11 +80,22 @@ public class StreamPacket
                 Height = reader.ReadInt32(),
                 FragmentIndex = reader.ReadUInt16(),
                 TotalFragments = reader.ReadUInt16(),
-                Payload = reader.ReadBytes(reader.ReadInt32())
+                FrameNumber = reader.ReadUInt32()
             };
+
+            ms.Seek(HeaderSize, SeekOrigin.Begin);
+
+            var payloadSize = data.Length - HeaderSize;
+            if (payloadSize > 0)
+            {
+                packet.Payload = reader.ReadBytes(payloadSize);
+            }
+
+            return packet;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Packet parse error: {ex.Message}");
             return null;
         }
     }
@@ -72,11 +104,13 @@ public class StreamPacket
         byte[] imageData,
         int width,
         int height,
-        uint sequenceNumber)
+        uint sequenceNumber,
+        uint frameNumber = 0)
     {
-        const int maxPayloadSize = MaxUdpSize - 100; // Odstęp na nagłówki
+        const int maxPayloadSize = MaxUdpSize - HeaderSize;
         var fragments = new List<StreamPacket>();
         var totalFragments = (ushort)Math.Ceiling((double)imageData.Length / maxPayloadSize);
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         for (ushort i = 0; i < totalFragments; i++)
         {
@@ -89,11 +123,12 @@ public class StreamPacket
             {
                 Type = totalFragments > 1 ? PacketType.VideoFrameFragment : PacketType.VideoFrame,
                 SequenceNumber = sequenceNumber,
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                Timestamp = ts,
                 Width = width,
                 Height = height,
                 FragmentIndex = i,
                 TotalFragments = totalFragments,
+                FrameNumber = frameNumber,
                 Payload = payload
             });
         }

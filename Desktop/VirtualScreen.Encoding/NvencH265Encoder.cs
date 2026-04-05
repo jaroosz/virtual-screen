@@ -28,6 +28,10 @@ public unsafe class NvencH265Encoder : IDisposable
 
     private FileStream? _debugFile;
 
+    private bool _forceNextIDR = false;
+
+    public void ForceNextIDR() => _forceNextIDR = true;
+
     public NvencH265Encoder(IntPtr d3d11Device, int width, int height, int bitrate = 15_000_000)
     {
         _d3d11Device = (void*)d3d11Device;
@@ -90,18 +94,24 @@ public unsafe class NvencH265Encoder : IDisposable
 
             var config = presetConfig.presetCfg;
 
-            config.gopLength = 60;
+            config.gopLength = 15;
             config.frameIntervalP = 1;
 
+            // HEVC specific configuration
+            config.encodeCodecConfig.hevcConfig.idrPeriod = 15;
+            config.encodeCodecConfig.hevcConfig.repeatSPSPPS = 1;
+            config.encodeCodecConfig.hevcConfig.outputAUD = 1;
+            config.encodeCodecConfig.hevcConfig.enableLTR = 0;
+            config.encodeCodecConfig.hevcConfig.ltrNumFrames = 0;
+            config.encodeCodecConfig.hevcConfig.maxNumRefFramesInDPB = 1;
+
+            // Rate control
             config.rcParams.rateControlMode = NV_ENC_PARAMS_RC_MODE.NV_ENC_PARAMS_RC_CBR;
             config.rcParams.averageBitRate = (uint)_bitrate;
             config.rcParams.maxBitRate = (uint)_bitrate;
             config.rcParams.vbvBufferSize = (uint)_bitrate / 2;
             config.rcParams.vbvInitialDelay = (uint)_bitrate / 4;
             //config.rcParams.enableAQ = 1;
-
-            config.encodeCodecConfig.hevcConfig.repeatSPSPPS = 1;
-            config.encodeCodecConfig.hevcConfig.outputAUD = 1;
 
             var initParams = NV_ENC_INITIALIZE_PARAMS.Create();
             initParams.encodeGUID = hevcGuid;
@@ -162,7 +172,7 @@ public unsafe class NvencH265Encoder : IDisposable
     /// 
     /// CALLER must return the rented buffer: ArrayPool&lt;byte&gt;.Shared.Return(result.Buffer)
     /// </summary>
-    public (byte[] Buffer, int Length)? EncodeTexture(IntPtr d3d11Texture)
+    public (byte[] Buffer, int Length, uint FrameNumber)? EncodeTexture(IntPtr d3d11Texture)
     {
         if (!_initialized) return null;
 
@@ -211,9 +221,15 @@ public unsafe class NvencH265Encoder : IDisposable
             picParams.completionEvent = null;
             picParams.pictureStruct = NV_ENC_PIC_STRUCT.NV_ENC_PIC_STRUCT_FRAME;
 
-            picParams.pictureType = _frameIndex == 0
-                ? NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_IDR
-                : NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_P;
+            if (_frameIndex == 0 || _forceNextIDR)
+            {
+                picParams.pictureType = NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_IDR;
+                _forceNextIDR = false;
+            }
+            else
+            {
+                // Don't set pictureType - let encoder decide
+            }
 
             picParams.frameIdx = _frameIndex;
             picParams.inputTimeStamp = _frameIndex;
@@ -269,7 +285,7 @@ public unsafe class NvencH265Encoder : IDisposable
                 (IntPtr)_apiPtr->nvEncUnlockBitstream);
             unlockBitstream(_encoder, _bitstreamBuffer);
 
-            return (buffer, encodedSize);
+            return (buffer, encodedSize, (uint)_encodedFrameCount);
         }
         finally
         {
