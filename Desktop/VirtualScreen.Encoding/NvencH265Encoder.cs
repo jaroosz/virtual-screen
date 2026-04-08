@@ -22,11 +22,6 @@ public unsafe class NvencH265Encoder : IDisposable
     private uint _frameIndex;
 
     private int _encodedFrameCount;
-    private long _totalEncodedBytes;
-    private long _maxFrameSize;
-    private long _minFrameSize = long.MaxValue;
-
-    private FileStream? _debugFile;
 
     private bool _forceNextIDR = false;
 
@@ -38,8 +33,6 @@ public unsafe class NvencH265Encoder : IDisposable
         _width = width;
         _height = height;
         _bitrate = bitrate;
-
-        _debugFile = File.Open("output_debug.hevc", FileMode.Create, FileAccess.Write);
 
         Initialize();
     }
@@ -109,8 +102,8 @@ public unsafe class NvencH265Encoder : IDisposable
             config.rcParams.rateControlMode = NV_ENC_PARAMS_RC_MODE.NV_ENC_PARAMS_RC_CBR;
             config.rcParams.averageBitRate = (uint)_bitrate;
             config.rcParams.maxBitRate = (uint)_bitrate;
-            config.rcParams.vbvBufferSize = (uint)_bitrate / 2;
-            config.rcParams.vbvInitialDelay = (uint)_bitrate / 4;
+            config.rcParams.vbvBufferSize = (uint)_bitrate / 60;
+            config.rcParams.vbvInitialDelay = 0;
             //config.rcParams.enableAQ = 1;
 
             var initParams = NV_ENC_INITIALIZE_PARAMS.Create();
@@ -256,30 +249,19 @@ public unsafe class NvencH265Encoder : IDisposable
 
             var encodedSize = (int)lockParams.bitstreamSizeInBytes;
 
-            // LOGS
             _encodedFrameCount++;
-            _totalEncodedBytes += encodedSize;
-            if (encodedSize > _maxFrameSize) _maxFrameSize = encodedSize;
-            if (encodedSize < _minFrameSize) _minFrameSize = encodedSize;
-            var avgSize = _totalEncodedBytes / _encodedFrameCount;
             var frameType = lockParams.pictureType == NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_IDR ? "IDR" :
                            lockParams.pictureType == NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_I ? "I" : "P";
 
             if (_encodedFrameCount % 30 == 0 || frameType == "IDR")
             {
                 Console.WriteLine(
-                    $"[NVENC] Frame #{_encodedFrameCount} ({frameType}): {encodedSize:N0} bytes | " +
-                    $"Avg: {avgSize:N0} B | Min: {_minFrameSize:N0} B | Max: {_maxFrameSize:N0} B | " +
-                    $"Bitrate: {(_totalEncodedBytes * 8.0 / _encodedFrameCount * 60 / 1_000_000):F2} Mbps"
+                    $"Frame #{_encodedFrameCount} ({frameType}): {encodedSize:N0} bytes"
                 );
             }
-            // END LOGS
 
             var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(encodedSize);
             Marshal.Copy((IntPtr)lockParams.bitstreamBufferPtr, buffer, 0, encodedSize);
-
-            _debugFile?.Write(buffer, 0, encodedSize);
-            _debugFile?.Flush();
 
             var unlockBitstream = Marshal.GetDelegateForFunctionPointer<NvEncUnlockBitstream>(
                 (IntPtr)_apiPtr->nvEncUnlockBitstream);
@@ -373,16 +355,13 @@ public unsafe class NvencH265Encoder : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[NVENC] Cleanup error: {ex.Message}");
+            Console.WriteLine($"Cleanup error: {ex.Message}");
         }
     }
 
     public void Dispose()
     {
         if (!_initialized) return;
-
-        _debugFile?.Close();
-        _debugFile = null;
 
         CleanupResources();
         _initialized = false;

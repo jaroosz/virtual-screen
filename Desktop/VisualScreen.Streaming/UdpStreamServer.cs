@@ -19,7 +19,6 @@ public class UdpStreamServer : IStreamServer
     private IScreenCapture? _screenCapture;
 
     private const int MaxUdpPayload = 1400; // MTU 1500 - 100 bytes
-    private readonly byte[] _headerBuffer = new byte[100]; // pre-allocated header buffer
 
     public bool IsRunning { get; private set; }
     public int Port { get; private set; }
@@ -40,7 +39,6 @@ public class UdpStreamServer : IStreamServer
         _listenerTask = Task.Run(() => ListenForClients(_cts.Token));
 
         IsRunning = true;
-        Console.WriteLine($"UDP server listening on port {port}");
     }
 
     public void Stop()
@@ -144,43 +142,40 @@ public class UdpStreamServer : IStreamServer
             var span = packet.AsSpan(0, packetSize);
             var offset = 0;
 
-            span[offset++] = (byte)(totalFragments > 1 ? 2 : 1); // VideoFrameFragment : VideoFrame
+            span[offset++] = (byte)(totalFragments > 1 ? 2 : 1);
 
-            // Sequence number (4 bytes)
+            // 4 bytes
             BitConverter.TryWriteBytes(span.Slice(offset, 4), sequenceNumber);
             offset += 4;
 
-            // Timestamp (8 bytes)
+            // 8 bytes
             BitConverter.TryWriteBytes(span.Slice(offset, 8), timestamp);
             offset += 8;
 
-            // Width (4 bytes)
+            // 4 bytes
             BitConverter.TryWriteBytes(span.Slice(offset, 4), width);
             offset += 4;
 
-            // Height (4 bytes)
+            // 4 bytes
             BitConverter.TryWriteBytes(span.Slice(offset, 4), height);
             offset += 4;
 
-            // Fragment index (2 bytes)
+            // 2 bytes
             BitConverter.TryWriteBytes(span.Slice(offset, 2), fragmentIndex);
             offset += 2;
 
-            // Total fragments (2 bytes)
+            // 2 bytes
             BitConverter.TryWriteBytes(span.Slice(offset, 2), totalFragments);
             offset += 2;
 
-            // FrameNumber (4 bytes)
+            // 4 bytes
             BitConverter.TryWriteBytes(span.Slice(offset, 4), frameNumber);
             offset += 4;
 
-            // Padding to align to 50 bytes header
+            // padding
             offset = 50;
 
-            // Payload (direct copy from H.265 buffer)
             payload.CopyTo(span.Slice(offset));
-
-            // Return actual packet (not rented buffer)
             var finalPacket = span.ToArray();
             return finalPacket;
         }

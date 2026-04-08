@@ -1,7 +1,4 @@
-﻿using System.Net;
-using System.Net.Sockets;
-using System.Collections.Concurrent;
-using System.Threading.Channels;
+﻿using System.Net.Sockets;
 using VirtualScreenViewer.Core.Protocol;
 
 namespace VirtualScreenViewer.Services;
@@ -11,92 +8,47 @@ public class StreamReceiver : IDisposable
     private UdpClient? _udpClient;
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
-    private Task? _decodeTask;
     private bool _connectionResponseReceived;
 
-    private Channel<StreamPacket>? _frameChannel;
-    private readonly ConcurrentDictionary<uint, FrameAssembler> _frameAssemblers = new();
+    private FrameAssembler? _currentAssembler;
+    private uint _currentSeq = uint.MaxValue;
 
-    private IVideoDecoder? _decoder;
-    private bool _decoderInitialized = false;
-
-    public event EventHandler<FrameReceivedEventArgs>? FrameReceived;
-    public event EventHandler<DecodedFrameEventArgs>? DecodedFrameReceived;
+    public event EventHandler<FrameReadyEventArgs>? FrameReady;
+    public event EventHandler<string>? LogMessage;
     public event EventHandler<ConnectionStatusEventArgs>? ConnectionStatusChanged;
 
     public bool IsConnected { get; private set; }
 
-    public StreamReceiver(IVideoDecoder? decoder = null)
+    public async Task ConnectAsync(string ip, int port)
     {
-        _decoder = decoder;
-    }
+        _udpClient = new UdpClient();
+        _udpClient.Client.ReceiveBufferSize = 4 * 1024 * 1024;
+        _udpClient.Connect(ip, port);
 
-    public async Task ConnectAsync(string desktopIp, int port)
-    {
-        if (IsConnected) return;
+        _cts = new CancellationTokenSource();
+        _receiveTask = Task.Factory.StartNew(
+            () => ReceiveLoop(_cts.Token),
+            _cts.Token,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
 
-        try
+        var req = new StreamPacket
         {
-            _udpClient = new UdpClient();
-            _udpClient.Client.ReceiveBufferSize = 4 * 1024 * 1024; // 4MB
-            _udpClient.Connect(desktopIp, port);
+            Type = PacketType.ConnectionRequest,
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        };
+        var reqBytes = req.ToBytes();
+        await _udpClient.SendAsync(reqBytes, reqBytes.Length);
 
-            _cts = new CancellationTokenSource();
-
-            // channel with only 4 frames
-            _frameChannel = Channel.CreateBounded<StreamPacket>(new BoundedChannelOptions(4)
-            {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true,
-                SingleWriter = true
-            });
-
-            // for receiving UDP
-            _receiveTask = Task.Factory.StartNew(
-                () => ReceiveLoop(_cts.Token),
-                _cts.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).Unwrap();
-
-            // for decoding
-            _decodeTask = Task.Factory.StartNew(
-                () => DecodeLoop(_cts.Token),
-                _cts.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).Unwrap();
-
-            var requestPacket = new StreamPacket
-            {
-                Type = PacketType.ConnectionRequest,
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            };
-
-            var data = requestPacket.ToBytes();
-            await _udpClient.SendAsync(data, data.Length);
-
-            var deadline = DateTime.UtcNow.AddSeconds(5);
-            while (DateTime.UtcNow < deadline)
-            {
-                await Task.Delay(50);
-                if (_connectionResponseReceived)
-                {
-                    IsConnected = true;
-                    return;
-                }
-            }
-
-            Disconnect();
-        }
-        catch (SocketException ex)
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
         {
-            Disconnect();
-            throw new Exception($"Cannot connect to {desktopIp}:{port}.", ex);
+            await Task.Delay(50);
+            if (_connectionResponseReceived) { IsConnected = true; return; }
         }
-        catch
-        {
-            Disconnect();
-            throw;
-        }
+
+        Disconnect();
+        throw new Exception($"No response from {ip}:{port}");
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -107,9 +59,7 @@ public class StreamReceiver : IDisposable
             {
                 var result = await _udpClient.ReceiveAsync(ct);
                 var packet = StreamPacket.FromBytes(result.Buffer);
-
-                if (packet == null)
-                    continue;
+                if (packet == null) continue;
 
                 switch (packet.Type)
                 {
@@ -118,7 +68,7 @@ public class StreamReceiver : IDisposable
                         break;
 
                     case PacketType.VideoFrame:
-                        _frameChannel?.Writer.TryWrite(packet);
+                        OnFrameComplete(packet.Payload, packet.FrameNumber, packet.Width, packet.Height, 1);
                         break;
 
                     case PacketType.VideoFrameFragment:
@@ -126,197 +76,121 @@ public class StreamReceiver : IDisposable
                         break;
                 }
             }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex) { Console.WriteLine(ex.Message); }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex) { Log($"Error: {ex.Message}"); }
         }
-
-        _frameChannel?.Writer.TryComplete();
     }
 
     private void HandleFragment(StreamPacket packet)
     {
-        var assembler = _frameAssemblers.GetOrAdd(
-            packet.SequenceNumber,
-            _ => new FrameAssembler(packet.TotalFragments, packet.Width, packet.Height, packet.Timestamp, packet.FrameNumber));
-
-        if (assembler.AddFragment(packet.FragmentIndex, packet.Payload))
+        if (packet.SequenceNumber != _currentSeq)
         {
-            var completeFrame = new StreamPacket
-            {
-                Type = PacketType.VideoFrame,
-                SequenceNumber = packet.SequenceNumber,
-                Timestamp = assembler.Timestamp,
-                Width = assembler.Width,
-                Height = assembler.Height,
-                FrameNumber = assembler.FrameNumber,
-                Payload = assembler.GetCompleteData() // only once
-            };
+            _currentSeq = packet.SequenceNumber;
+            _currentAssembler = new FrameAssembler(packet.TotalFragments, packet.FrameNumber, packet.Width, packet.Height, packet.Timestamp);
+        }
 
-            _frameChannel?.Writer.TryWrite(completeFrame);
-            _frameAssemblers.TryRemove(packet.SequenceNumber, out _);
+        if (_currentAssembler == null) return;
 
-            CleanupStaleAssemblers(packet.SequenceNumber);
+        if (_currentAssembler.AddFragment(packet.FragmentIndex, packet.Payload))
+        {
+            var receiveTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var latency = receiveTime - _currentAssembler.SendTimestamp;
+            Log($"✓ Frame #{_currentAssembler.FrameNumber} COMPLETE - latency: {latency}ms ({_currentAssembler.TotalFragments} fragments)");
+
+            var data = _currentAssembler.GetData();
+            OnFrameComplete(data, _currentAssembler.FrameNumber, _currentAssembler.Width, _currentAssembler.Height, _currentAssembler.TotalFragments);
+            _currentAssembler = null;
+            _currentSeq = uint.MaxValue;
         }
     }
 
-    private void CleanupStaleAssemblers(uint currentSeq)
+    private void OnFrameComplete(byte[] data, uint frameNumber, int width, int height, int fragments)
     {
-        const uint staleThreshold = 30;
-        foreach (var key in _frameAssemblers.Keys)
+        // Log($"Frame #{frameNumber} completed ({fragments} frags, {data.Length} B)");
+        FrameReady?.Invoke(this, new FrameReadyEventArgs
         {
-            if (currentSeq - key > staleThreshold)
-                _frameAssemblers.TryRemove(key, out _);
-        }
-    }
-
-    private async Task DecodeLoop(CancellationToken ct)
-    {
-        if (_frameChannel == null)
-            return;
-
-        await foreach (var packet in _frameChannel.Reader.ReadAllAsync(ct))
-        {
-            try
-            {
-                if (_decoder != null && !_decoderInitialized && packet.Width > 0 && packet.Height > 0)
-                {
-                    try
-                    {
-                        _decoder.FrameDecoded += OnDecoderFrameDecoded;
-                        _decoder.Initialize(packet.Width, packet.Height);
-                        _decoderInitialized = true;
-                        System.Diagnostics.Debug.WriteLine($"Decoder initialized");
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Init error: {ex.Message}");
-                    }
-                }
-
-                if (_decoder != null && _decoderInitialized)
-                {
-                    _decoder.DecodeFrame(packet.Payload, packet.FrameNumber);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine(ex.Message);
-            }
-        }
-    }
-
-    private void OnDecoderFrameDecoded(object? sender, DecodedFrameEventArgs e)
-    {
-        DecodedFrameReceived?.Invoke(this, new DecodedFrameEventArgs
-        {
-            RgbaData = e.RgbaData,
-            Width = e.Width,
-            Height = e.Height,
-            Timestamp = e.Timestamp,
-            FrameNumber = e.FrameNumber
+            Data = data,
+            FrameNumber = frameNumber,
+            Width = width,
+            Height = height
         });
     }
 
+    private void Log(string msg) => LogMessage?.Invoke(this, msg);
+
     public void Disconnect()
     {
-        if (!IsConnected && _udpClient == null) return;
-
         _cts?.Cancel();
-        _frameChannel?.Writer.TryComplete();
-
         _receiveTask?.Wait(2000);
-        _decodeTask?.Wait(2000);
-
         _udpClient?.Close();
         _udpClient = null;
         _cts = null;
-        _frameChannel = null;
-        _frameAssemblers.Clear();
-
+        _currentAssembler = null;
+        _currentSeq = uint.MaxValue;
         IsConnected = false;
         _connectionResponseReceived = false;
-        if (_decoder != null)
-            _decoder.FrameDecoded -= OnDecoderFrameDecoded;
-
-        _decoderInitialized = false;
     }
 
-    public void Dispose()
-    {
-        Disconnect();
-        _decoder?.Dispose();
-    }
+    public void Dispose() => Disconnect();
 
     private class FrameAssembler
     {
         private readonly byte[][] _fragments;
         private readonly bool[] _received;
         private int _receivedCount;
-        private byte[]? _cachedResult;
+        private int _totalBytes;
 
+        public uint FrameNumber { get; }
+        public int TotalFragments { get; }
         public int Width { get; }
         public int Height { get; }
-        public long Timestamp { get; }
-        public uint FrameNumber { get; }
+        public long SendTimestamp { get; }
 
-        public FrameAssembler(int totalFragments, int width, int height, long timestamp, uint frameNumber = 0)
+        public FrameAssembler(int totalFragments, uint frameNumber, int width, int height, long sendTimestamp)
         {
             _fragments = new byte[totalFragments][];
             _received = new bool[totalFragments];
+            TotalFragments = totalFragments;
+            FrameNumber = frameNumber;
             Width = width;
             Height = height;
-            Timestamp = timestamp;
-            FrameNumber = frameNumber;
+            SendTimestamp = sendTimestamp;
         }
 
         public bool AddFragment(int index, byte[] data)
         {
-            if (index >= _fragments.Length || _received[index])
-                return false;
-
+            if (index >= _fragments.Length || _received[index]) return false;
             _fragments[index] = data;
             _received[index] = true;
             _receivedCount++;
-
-            return _receivedCount == _fragments.Length;
+            _totalBytes += data.Length;
+            return _receivedCount == TotalFragments;
         }
 
-        public byte[] GetCompleteData()
+        public byte[] GetData()
         {
-            if (_cachedResult != null) return _cachedResult;
-
-            var totalSize = _fragments.Sum(f => f.Length);
-            _cachedResult = new byte[totalSize];
+            var result = new byte[_totalBytes];
             var offset = 0;
-
-            foreach (var fragment in _fragments)
-            {
-                Array.Copy(fragment, 0, _cachedResult, offset, fragment.Length);
-                offset += fragment.Length;
-            }
-
-            return _cachedResult;
+            foreach (var f in _fragments) { Buffer.BlockCopy(f, 0, result, offset, f.Length); offset += f.Length; }
+            return result;
         }
     }
 }
 
-public enum ConnectionStatus
+public class FrameReadyEventArgs : EventArgs
 {
-    Disconnected,
-    Connecting,
-    Connected,
-    Warning,
-    Error
+    public byte[] Data { get; init; } = Array.Empty<byte>();
+    public uint FrameNumber { get; init; }
+    public int Width { get; init; }
+    public int Height { get; init; }
 }
+
+public enum ConnectionStatus { Disconnected, Connecting, Connected, Warning, Error }
 
 public class ConnectionStatusEventArgs : EventArgs
 {
     public ConnectionStatus Status { get; init; }
     public string Message { get; init; } = string.Empty;
-    public DateTime Timestamp { get; init; }
 }
 
 public class FrameReceivedEventArgs : EventArgs

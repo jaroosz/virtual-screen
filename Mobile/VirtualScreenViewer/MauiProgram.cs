@@ -11,6 +11,10 @@ namespace VirtualScreenViewer
             builder
                 .UseMauiApp<App>()
                 .UseSkiaSharp()
+                .ConfigureMauiHandlers(handlers =>
+                {
+                    handlers.AddHandler<VideoSurfaceView, VirtualScreenViewer.Platforms.Android.VideoSurfaceViewHandler>();
+                })
                 .ConfigureFonts(fonts =>
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");

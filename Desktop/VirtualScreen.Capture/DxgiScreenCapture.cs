@@ -10,9 +10,6 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
     public bool IsCapturing { get; private set; }
 
-    // OLD byte array
-    public event EventHandler<FrameCapturedEventArgs>? FrameCaptured;
-    // NEW texture pointer
     public event EventHandler<TextureCapturedEventArgs>? TextureCaptured;
 
     public void Start(string monitorDeviceName)
@@ -119,7 +116,6 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
                     if (TextureCaptured != null && TextureCaptured.GetInvocationList().Length > 0)
                     {
-                        // ZERO-COPY PATH: Send GPU texture pointer directly
                         TextureCaptured.Invoke(this, new TextureCapturedEventArgs
                         {
                             TexturePtr = texturePtr,
@@ -129,34 +125,6 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                             Height = height,
                             Timestamp = DateTime.UtcNow
                         });
-                    }
-                    // FALLBACK: Old byte[] path (for JPEG/testing)
-                    else if (FrameCaptured != null && FrameCaptured.GetInvocationList().Length > 0)
-                    {
-                        var stagingPtr = NativeDxgi.CreateStagingTexture(devicePtr, width, height);
-                        if (stagingPtr != IntPtr.Zero)
-                        {
-                            try
-                            {
-                                NativeDxgi.CopyResource(contextPtr, stagingPtr, texturePtr);
-                                var bytes = NativeDxgi.ReadTextureBytes(contextPtr, stagingPtr, width, height);
-
-                                if (bytes != null)
-                                {
-                                    FrameCaptured.Invoke(this, new FrameCapturedEventArgs
-                                    {
-                                        Data = bytes,
-                                        Width = width,
-                                        Height = height,
-                                        Timestamp = DateTime.UtcNow
-                                    });
-                                }
-                            }
-                            finally
-                            {
-                                Marshal.Release(stagingPtr);
-                            }
-                        }
                     }
                 }
                 finally
@@ -181,11 +149,11 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
         if (result.output != IntPtr.Zero)
         {
             Marshal.Release(factoryPtr);
-            Console.WriteLine("[DXGI] Using NVIDIA adapter for NVENC compatibility");
+            Console.WriteLine("Using NVIDIA adapter");
             return result;
         }
 
-        Console.WriteLine("[DXGI] NVIDIA adapter not found, using fallback adapter");
+        Console.WriteLine("NVIDIA adapter not found");
         result = TryFindAdapterOutput(factoryPtr, monitorDeviceName, preferNvidia: false);
         Marshal.Release(factoryPtr);
 
@@ -225,7 +193,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                     _ => $"Unknown (0x{adapterDesc.VendorId:X4})"
                 };
 
-                Console.WriteLine($"[DXGI] Adapter {adapterIndex}: {vendorName} (VendorID: 0x{adapterDesc.VendorId:X4})");
+                Console.WriteLine($"Adapter {adapterIndex}: {vendorName} (VendorID: 0x{adapterDesc.VendorId:X4})");
 
                 // If we're filtering for NVIDIA and this isn't NVIDIA, skip it
                 if (preferNvidia && !isNvidia)
