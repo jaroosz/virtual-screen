@@ -93,10 +93,6 @@ public class StreamReceiver : IDisposable
 
         if (_currentAssembler.AddFragment(packet.FragmentIndex, packet.Payload))
         {
-            var receiveTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var latency = receiveTime - _currentAssembler.SendTimestamp;
-            Log($"✓ Frame #{_currentAssembler.FrameNumber} COMPLETE - latency: {latency}ms ({_currentAssembler.TotalFragments} fragments)");
-
             var data = _currentAssembler.GetData();
             OnFrameComplete(data, _currentAssembler.FrameNumber, _currentAssembler.Width, _currentAssembler.Height, _currentAssembler.TotalFragments);
             _currentAssembler = null;
@@ -106,13 +102,13 @@ public class StreamReceiver : IDisposable
 
     private void OnFrameComplete(byte[] data, uint frameNumber, int width, int height, int fragments)
     {
-        // Log($"Frame #{frameNumber} completed ({fragments} frags, {data.Length} B)");
         FrameReady?.Invoke(this, new FrameReadyEventArgs
         {
             Data = data,
             FrameNumber = frameNumber,
             Width = width,
-            Height = height
+            Height = height,
+            AssemblyCompleteTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         });
     }
 
@@ -183,6 +179,7 @@ public class FrameReadyEventArgs : EventArgs
     public uint FrameNumber { get; init; }
     public int Width { get; init; }
     public int Height { get; init; }
+    public long AssemblyCompleteTimestamp { get; init; }
 }
 
 public enum ConnectionStatus { Disconnected, Connecting, Connected, Warning, Error }

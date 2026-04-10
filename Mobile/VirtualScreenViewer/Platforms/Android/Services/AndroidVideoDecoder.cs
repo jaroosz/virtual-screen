@@ -1,5 +1,6 @@
 ﻿using Android.Media;
 using Android.Views;
+using System.Collections.Concurrent;
 
 namespace VirtualScreenViewer.Platforms.Android.Services;
 
@@ -7,11 +8,9 @@ public class AndroidVideoDecoder : IDisposable
 {
     private MediaCodec? _decoder;
     private bool _initialized;
-    private int _inputCount;
-    private int _outputCount;
 
-    // Kolejka danych wejściowych — wolne buffery MediaCodec odbierają z niej dane
-    private readonly System.Collections.Concurrent.ConcurrentQueue<(byte[] Data, uint FrameNumber)> _pending = new();
+    private readonly ConcurrentQueue<(byte[] Data, uint FrameNumber, long AssemblyCompleteTime)> _pending = new();
+    private readonly ConcurrentDictionary<long, (uint FrameNumber, long AssemblyCompleteTime, long QueuedTime)> _frameTimestamps = new();
 
     public event EventHandler<string>? DiagnosticLog;
     private void Log(string msg) => DiagnosticLog?.Invoke(this, msg);
@@ -21,26 +20,33 @@ public class AndroidVideoDecoder : IDisposable
         _decoder = MediaCodec.CreateDecoderByType("video/hevc");
 
         var format = MediaFormat.CreateVideoFormat("video/hevc", width, height);
+
         format.SetInteger(MediaFormat.KeyPriority, 0);
+
         if (OperatingSystem.IsAndroidVersionAtLeast(30))
+        {
             format.SetInteger(MediaFormat.KeyLowLatency, 1);
+        }
+        format.SetInteger(MediaFormat.KeyOperatingRate, int.MaxValue);
+        format.SetInteger(MediaFormat.KeyMaxBFrames, 0);
+        format.SetInteger(MediaFormat.KeyColorFormat, (int)MediaCodecCapabilities.Formatsurface);
 
         _decoder.SetCallback(new Callback(this));
-
-        // Surface zamiast null — dekoder renderuje bezpośrednio na ekran, zero kopii
         _decoder.Configure(format, surface, null, 0);
+        _decoder.SetVideoScalingMode(VideoScalingMode.ScaleToFit);
+
         _decoder.Start();
 
         _initialized = true;
     }
 
-    public void SubmitFrame(byte[] h265Data, uint frameNumber)
+    public void SubmitFrame(byte[] h265Data, uint frameNumber, long assemblyCompleteTime)
     {
         if (!_initialized) return;
-        _pending.Enqueue((h265Data, frameNumber));
+        _pending.Enqueue((h265Data, frameNumber, assemblyCompleteTime));
     }
 
-    private readonly System.Collections.Concurrent.ConcurrentQueue<(MediaCodec Codec, int Index)> _freeBuffers = new();
+    private readonly ConcurrentQueue<(MediaCodec Codec, int Index)> _freeBuffers = new();
 
     private void FeedBuffer(MediaCodec codec, int index)
     {
@@ -52,15 +58,26 @@ public class AndroidVideoDecoder : IDisposable
 
         try
         {
+            var queueTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var buf = codec.GetInputBuffer(index);
             if (buf == null) return;
+
             buf.Clear();
             var len = Math.Min(item.Data.Length, buf.Capacity());
             buf.Put(item.Data, 0, len);
-            long pts = ((long)item.FrameNumber << 32) | (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() & 0xFFFFFFFF);
+
+            long pts = queueTime * 1000;
+            _frameTimestamps[pts] = (item.FrameNumber, item.AssemblyCompleteTime, queueTime);
+
             codec.QueueInputBuffer(index, 0, len, pts, 0);
+
+            var queueingLatency = queueTime - item.AssemblyCompleteTime;
+            if (queueingLatency > 5)
+            {
+                Log($"#{item.FrameNumber} waited {queueingLatency}ms in queue");
+            }
         }
-        catch (Exception ex) { Log($"[Decoder] Input error: {ex.Message}"); }
+        catch (Exception ex) { Log($"Input error: {ex.Message}"); }
     }
 
     private class Callback : MediaCodec.Callback
@@ -75,6 +92,21 @@ public class AndroidVideoDecoder : IDisposable
 
         public override void OnOutputBufferAvailable(MediaCodec codec, int index, MediaCodec.BufferInfo info)
         {
+            var renderTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            if (info.Size > 0 && info.PresentationTimeUs > 0)
+            {
+                long pts = info.PresentationTimeUs;
+
+                if (_p._frameTimestamps.TryRemove(pts, out var frameInfo))
+                {
+                    var totalLatency = renderTime - frameInfo.AssemblyCompleteTime;
+                    var decodingLatency = renderTime - frameInfo.QueuedTime;
+
+                    Log(_p, $"#{frameInfo.FrameNumber}: {totalLatency}ms (decode={decodingLatency}ms)");
+                }
+            }
+
             codec.ReleaseOutputBuffer(index, info.Size > 0);
         }
 
@@ -82,7 +114,7 @@ public class AndroidVideoDecoder : IDisposable
         {
             var w = format.ContainsKey(MediaFormat.KeyWidth) ? format.GetInteger(MediaFormat.KeyWidth) : -1;
             var h = format.ContainsKey(MediaFormat.KeyHeight) ? format.GetInteger(MediaFormat.KeyHeight) : -1;
-            Log(_p, $"FormatChanged {w}x{h}");
+            var color = format.ContainsKey(MediaFormat.KeyColorFormat) ? format.GetInteger(MediaFormat.KeyColorFormat) : -1;
         }
 
         public override void OnError(MediaCodec codec, MediaCodec.CodecException e)
@@ -108,6 +140,7 @@ public class AndroidVideoDecoder : IDisposable
             _decoder?.Release();
             _decoder?.Dispose();
             _decoder = null;
+            _frameTimestamps.Clear();
         }
         catch { }
     }

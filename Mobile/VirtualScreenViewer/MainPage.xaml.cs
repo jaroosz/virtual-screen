@@ -66,7 +66,7 @@ public partial class MainPage : ContentPage
             AddLog($"Decoder initialized {e.Width}x{e.Height}");
         }
 
-        _decoder.SubmitFrame(e.Data, e.FrameNumber);
+        _decoder.SubmitFrame(e.Data, e.FrameNumber, e.AssemblyCompleteTimestamp);
         _decoder.TryFlushPending();
     }
 

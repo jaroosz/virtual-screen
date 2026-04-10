@@ -14,7 +14,7 @@ namespace VirtualScreen.Encoding;
 ///   NV_ENC_CONFIG_H264_VUI_PARAMETERS     =   112 bytes
 ///   NV_ENC_CONFIG_H264                    =  1792 bytes
 ///   NV_ENC_CONFIG_HEVC                    =  1560 bytes
-///   NV_ENC_CODEC_CONFIG                   =  1792 bytes (union, largest is H264)
+///   NV_ENC_CODEC_CONFIG                   =  1792 bytes (union)
 ///   NV_ENC_CONFIG                         =  3584 bytes
 ///   NV_ENC_PRESET_CONFIG                  =  5128 bytes
 ///   NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS  =  1552 bytes
@@ -34,11 +34,11 @@ namespace VirtualScreen.Encoding;
 ///   NV_ENC_LOCK_BITSTREAM                 =  1544 bytes
 ///   NV_ENC_CREATE_BITSTREAM_BUFFER        =   776 bytes
 ///   NV_ENCODE_API_FUNCTION_LIST           =  2552 bytes
-///   NV_ENC_CONFIG.rcParams                =    40 (expected 44 in old docs)
-///   NV_ENC_CONFIG.encodeCodecConfig       =   168 (expected 172 in old docs)
-///   NV_ENC_INITIALIZE_PARAMS.encodeConfig =    88 (expected 60 in old docs)
-///   NV_ENC_PIC_PARAMS.inputBuffer         =    40 (expected 48 in old docs)
-///   NV_ENC_PIC_PARAMS.outputBitstream     =    48 (expected 56 in old docs)
+///   NV_ENC_CONFIG.rcParams                =    40
+///   NV_ENC_CONFIG.encodeCodecConfig       =   168
+///   NV_ENC_INITIALIZE_PARAMS.encodeConfig =    88
+///   NV_ENC_PIC_PARAMS.inputBuffer         =    40
+///   NV_ENC_PIC_PARAMS.outputBitstream     =    48
 /// Architecture: 64-bit (sizeof(void*) = 8 bytes)
 /// </summary>
 internal static unsafe class NvEncodeAPI
@@ -96,6 +96,15 @@ internal static unsafe class NvEncodeAPI
         NV_ENC_TUNING_INFO_LOSSLESS = 4,
         NV_ENC_TUNING_INFO_ULTRA_HIGH_QUALITY = 5,
         NV_ENC_TUNING_INFO_COUNT
+    }
+
+    public enum NV_ENC_SPLIT_ENCODE_MODE : uint
+    {
+        NV_ENC_SPLIT_AUTO_MODE = 0,
+        NV_ENC_SPLIT_AUTO_FORCED_MODE = 1,
+        NV_ENC_SPLIT_TWO_FORCED_MODE = 2,
+        NV_ENC_SPLIT_THREE_FORCED_MODE = 3,
+        NV_ENC_SPLIT_DISABLE_MODE = 15,
     }
 
     public enum NV_ENC_PARAMS_RC_MODE : uint
@@ -553,6 +562,10 @@ internal static unsafe class NvEncodeAPI
         public ushort Data3;
         public unsafe fixed byte Data4[8];
 
+        // =========================================================================================
+        // Encode Codec GUIDS supported by the NvEncodeAPI interface.
+        // =========================================================================================
+
         // {6BC82762-4E63-4ca4-AA85-1E50F321F6BF}
         public static GUID H264
         {
@@ -576,10 +589,23 @@ internal static unsafe class NvEncodeAPI
             }
         }
 
+        // {0A352289-0AA7-4759-862D-5D15CD16D254}
+        public static GUID AV1
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x0A352289, Data2 = 0x0AA7, Data3 = 0x4759 };
+                g.Data4[0] = 0x86; g.Data4[1] = 0x2D; g.Data4[2] = 0x5D; g.Data4[3] = 0x15;
+                g.Data4[4] = 0xCD; g.Data4[5] = 0x16; g.Data4[6] = 0xD2; g.Data4[7] = 0x54;
+                return g;
+            }
+        }
+
         // =========================================================================================
         // *   Encode Profile GUIDS supported by the NvEncodeAPI interface.
         // =========================================================================================
 
+        // {BFD6F8E7-233C-4341-8B3E-4818523803F4}
         public static GUID Profile_AutoSelect
         {
             get
@@ -591,6 +617,7 @@ internal static unsafe class NvEncodeAPI
             }
         }
 
+        // {0727BCAA-78C4-4c83-8C2F-EF3DFF267C6A}
         public static GUID H264_Profile_Baseline
         {
             get
@@ -602,6 +629,7 @@ internal static unsafe class NvEncodeAPI
             }
         }
 
+        // {60B5C1D4-67FE-4790-94D5-C4726D7B6E6D}
         public static GUID H264_Profile_Main
         {
             get
@@ -613,6 +641,7 @@ internal static unsafe class NvEncodeAPI
             }
         }
 
+        // {E7CBC309-4F7A-4b89-AF2A-D537C92BE310}
         public static GUID H264_Profile_High
         {
             get
@@ -624,6 +653,55 @@ internal static unsafe class NvEncodeAPI
             }
         }
 
+        // {7AC663CB-A598-4960-B844-339B261A7D52}
+        public static GUID H264_Profile_High444
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x7AC663CB, Data2 = 0xA598, Data3 = 0x4960 };
+                g.Data4[0] = 0xB8; g.Data4[1] = 0x44; g.Data4[2] = 0x33; g.Data4[3] = 0x9B;
+                g.Data4[4] = 0x26; g.Data4[5] = 0x1A; g.Data4[6] = 0x7D; g.Data4[7] = 0x52;
+                return g;
+            }
+        }
+
+        // {40847BF5-33F7-4601-9084-E8FE3C1DB8B7}
+        public static GUID H264_Profile_Stereo
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x40847BF5, Data2 = 0x33F7, Data3 = 0x4601 };
+                g.Data4[0] = 0x90; g.Data4[1] = 0x84; g.Data4[2] = 0xE8; g.Data4[3] = 0xFE;
+                g.Data4[4] = 0x3C; g.Data4[5] = 0x1D; g.Data4[6] = 0xB8; g.Data4[7] = 0xB7;
+                return g;
+            }
+        }
+
+        // {B405AFAC-F32B-417B-89C4-9ABEED3E5978}
+        public static GUID H264_Profile_ProgressiveHigh
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0xB405AFAC, Data2 = 0xF32B, Data3 = 0x417B };
+                g.Data4[0] = 0x89; g.Data4[1] = 0xC4; g.Data4[2] = 0x9A; g.Data4[3] = 0xBE;
+                g.Data4[4] = 0xED; g.Data4[5] = 0x3E; g.Data4[6] = 0x59; g.Data4[7] = 0x78;
+                return g;
+            }
+        }
+
+        // {AEC1BD87-E85B-48f2-84C3-98BCA6285072}
+        public static GUID H264_Profile_ConstrainedHigh
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0xAEC1BD87, Data2 = 0xE85B, Data3 = 0x48f2 };
+                g.Data4[0] = 0x84; g.Data4[1] = 0xC3; g.Data4[2] = 0x98; g.Data4[3] = 0xBC;
+                g.Data4[4] = 0xA6; g.Data4[5] = 0x28; g.Data4[6] = 0x50; g.Data4[7] = 0x72;
+                return g;
+            }
+        }
+
+        // {B514C39A-B55B-40fa-878F-F1253B4DFDEC}
         public static GUID HEVC_Profile_Main
         {
             get
@@ -635,6 +713,7 @@ internal static unsafe class NvEncodeAPI
             }
         }
 
+        // {fa4d2b6c-3a5b-411a-8018-0a3f5e3c9be5}
         public static GUID HEVC_Profile_Main10
         {
             get
@@ -642,6 +721,31 @@ internal static unsafe class NvEncodeAPI
                 var g = new GUID { Data1 = 0xFA4D2B6C, Data2 = 0x3A5B, Data3 = 0x411A };
                 g.Data4[0] = 0x80; g.Data4[1] = 0x18; g.Data4[2] = 0x0A; g.Data4[3] = 0x3F;
                 g.Data4[4] = 0x5E; g.Data4[5] = 0x3C; g.Data4[6] = 0x9B; g.Data4[7] = 0xE5;
+                return g;
+            }
+        }
+
+        // For HEVC Main 444 8 bit and HEVC Main 444 10 bit profiles only
+        // {51ec32b5-1b4c-453c-9cbd-b616bd621341}
+        public static GUID HEVC_Profile_Frext
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x51EC32B5, Data2 = 0x1B4C, Data3 = 0x453C };
+                g.Data4[0] = 0x9C; g.Data4[1] = 0xBD; g.Data4[2] = 0xB6; g.Data4[3] = 0x16;
+                g.Data4[4] = 0xBD; g.Data4[5] = 0x62; g.Data4[6] = 0x13; g.Data4[7] = 0x41;
+                return g;
+            }
+        }
+
+        // {5f2a39f5-f14e-4f95-9a9e-b76d568fcf97}
+        public static GUID AV1_Profile_Main
+        {
+            get
+            {
+                var g = new GUID { Data1 = 0x5F2A39F5, Data2 = 0xF14E, Data3 = 0x4F95 };
+                g.Data4[0] = 0x9A; g.Data4[1] = 0x9E; g.Data4[2] = 0xB7; g.Data4[3] = 0x6D;
+                g.Data4[4] = 0x56; g.Data4[5] = 0x8F; g.Data4[6] = 0xCF; g.Data4[7] = 0x97;
                 return g;
             }
         }
@@ -738,21 +842,183 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_RC_PARAMS — 128 bytes
-    // ═══════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Input struct for querying Encoding capabilities.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CAPS_PARAM
+    {
+        /// <summary> [in]: Struct version. Must be set to ::NV_ENC_CAPS_PARAM_VER </summary>
+        public uint version;
+
+        /// <summary> [in]: Specifies the encode capability to be queried. Client should pass a member for ::NV_ENC_CAPS enum. </summary>
+        public NV_ENC_CAPS capsToQuery;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved[62];
+
+        public static NV_ENC_CAPS_PARAM Create()
+        {
+            var config = new NV_ENC_CAPS_PARAM();
+            config.version = StructVersion(1);
+
+            return config;
+        }
+    }
+
+    /// <summary>
+    /// Restore encoder state parameters
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_RESTORE_ENCODER_STATE_PARAMS
+    {
+        /// <summary> [in]: Struct version. </summary>
+        public uint version;
+
+        /// <summary> [in]: State buffer index to which the encoder state will be restored </summary>
+        public uint bufferIdx;
+
+        /// <summary> [in]: State type to restore </summary>
+        public NV_ENC_STATE_RESTORE_TYPE state;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public uint reserved;
+
+        /// <summary> 
+        /// [in]: Specifies the output buffer pointer, for AV1 encode only. 
+        /// Application must call NvEncRestoreEncoderState() API with _NV_ENC_RESTORE_ENCODER_STATE_PARAMS::outputBitstream and 
+        /// _NV_ENC_RESTORE_ENCODER_STATE_PARAMS::completionEvent as input when an earlier call to this API returned "NV_ENC_ERR_NEED_MORE_OUTPUT", for AV1 encode.
+        /// </summary>
+        public void* outputBitstream;
+
+        /// <summary> [in]: Specifies the completion event when asynchronous mode of encoding is enabled. Used for AV1 encode only. </summary>
+        public void* completionEvent;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[64];
+
+        /// <summary> [in]: Reserved and must be set to NULL </summary>
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_RESTORE_ENCODER_STATE_PARAMS Create()
+        {
+            return new NV_ENC_RESTORE_ENCODER_STATE_PARAMS
+            {
+                version = StructVersion(2)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Encoded frame information parameters for every block.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_OUTPUT_STATS_BLOCK
+    {
+        /// <summary> [in]: Struct version. </summary>
+        public uint version;
+
+        /// <summary> [out]: QP of the block </summary>
+        public byte QP;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed byte reserved[3];
+
+        /// <summary> [out]: Bitcount of the block </summary>
+        public uint bitcount;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[13];
+
+        public static NV_ENC_OUTPUT_STATS_BLOCK Create()
+        {
+            return new NV_ENC_OUTPUT_STATS_BLOCK
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Encoded frame information parameters for every row.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_OUTPUT_STATS_ROW
+    {
+        /// <summary> [in]: Struct version. </summary>
+        public uint version;
+
+        /// <summary> [out]: QP of the row </summary>
+        public byte QP;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed byte reserved[3];
+
+        /// <summary> [out]: Bitcount of the row </summary>
+        public uint bitcount;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[13];
+
+        public static NV_ENC_OUTPUT_STATS_ROW Create()
+        {
+            return new NV_ENC_OUTPUT_STATS_ROW
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Defines a Rectangle. Used in ::NV_ENC_PREPROCESS_FRAME.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NVENC_RECT
+    {
+        /// <summary>
+        /// [in]: X coordinate of the upper left corner of rectangular area to be specified.
+        /// </summary>
+        public uint left;
+        /// <summary>
+        /// [in]: Y coordinate of the upper left corner of the rectangular area to be specified.
+        /// </summary>
+        public uint top;
+        /// <summary>
+        /// [in]: X coordinate of the bottom right corner of the rectangular area to be specified.
+        /// </summary>
+        public uint right;
+        /// <summary>
+        /// [in]: Y coordinate of the bottom right corner of the rectangular area to be specified.
+        /// </summary>
+        public uint bottom;
+    }
+
+    /// <summary>
+    /// QP value for frames
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NV_ENC_QP
+    {
+        /// <summary> [in]: Specifies QP value for P-frame. Even though this field is uint32_t for legacy reasons, the client should treat this as a signed parameter(int32_t) for cases in which negative QP values are to be specified. </summary>
+        public uint qpInterP;
+
+        /// <summary> [in]: Specifies QP value for B-frame. Even though this field is uint32_t for legacy reasons, the client should treat this as a signed parameter(int32_t) for cases in which negative QP values are to be specified. </summary>
+        public uint qpInterB;
+
+        /// <summary> [in]: Specifies QP value for Intra Frame. Even though this field is uint32_t for legacy reasons, the client should treat this as a signed parameter(int32_t) for cases in which negative QP values are to be specified. </summary>
+        public uint qpIntra;
+    }
+
+    /// <summary>
+    /// Rate Control Configuration Parameters (128 bytes)
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_RC_PARAMS
     {
         public uint version;
         public NV_ENC_PARAMS_RC_MODE rateControlMode;
-
-
-        // NV_ENC_QP constQP
-        public uint constQP_qpInterP;
-        public uint constQP_qpInterB;
-        public uint constQP_qpIntra;
+        public NV_ENC_QP constQP;
         public uint averageBitRate;
         public uint maxBitRate;
         public uint vbvBufferSize;
@@ -778,23 +1044,9 @@ internal static unsafe class NvEncodeAPI
         // bits 17-31 are reservedBitFields:15
         // ------------------------------------------
 
-
-        // NV_ENC_QP minQP
-        public uint minQP_qpInterP;
-        public uint minQP_qpInterB;
-        public uint minQP_qpIntra;
-
-
-        // NV_ENC_QP maxQP
-        public uint maxQP_qpInterP;
-        public uint maxQP_qpInterB;
-        public uint maxQP_qpIntra;
-
-
-        // NV_ENC_QP initialRCQP
-        public uint initialRCQP_qpInterP;
-        public uint initialRCQP_qpInterB;
-        public uint initialRCQP_qpIntra;
+        public NV_ENC_QP minQP;
+        public NV_ENC_QP maxQP;
+        public NV_ENC_QP initialRCQP;
         public uint temporallayerIdxMask;
         public unsafe fixed byte temporalLayerQP[8];
         public byte targetQuality;
@@ -831,10 +1083,9 @@ internal static unsafe class NvEncodeAPI
         public uint timeOffset;
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_CONFIG_HEVC — 1280 bytes
-    // ═══════════════════════════════════════════════════════════════
-
+    /// <summary>
+    /// HEVC encoder configuration parameters to be set during initialization.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_CONFIG_HEVC
     {
@@ -890,10 +1141,13 @@ internal static unsafe class NvEncodeAPI
         public fixed ulong reserved2[64];
     }
 
+    /// <summary>
+    /// H264 encoder configuration parameters
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
-    public unsafe struct NV_ENC_CONFIG_H264 // todo
+    public unsafe struct NV_ENC_CONFIG_H264
     {
-        // Bitfields (first uint)
+        // bitFields
         private uint _bitFields1;
         public uint enableTemporalSVC { get => _bitFields1 & 1; set => _bitFields1 = (_bitFields1 & ~1u) | (value & 1); }
         public uint enableStereoMVC { get => (_bitFields1 >> 1) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 1)) | ((value & 1) << 1); }
@@ -917,7 +1171,8 @@ internal static unsafe class NvEncodeAPI
         public uint enableScalabilityInfoSEI { get => (_bitFields1 >> 19) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 19)) | ((value & 1) << 19); }
         public uint singleSliceIntraRefresh { get => (_bitFields1 >> 20) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 20)) | ((value & 1) << 20); }
         public uint enableTimeCode { get => (_bitFields1 >> 21) & 1; set => _bitFields1 = (_bitFields1 & ~(1u << 21)) | ((value & 1) << 21); }
-        // bits 22-31 reserved
+        public uint reservedBitFields { get => (_bitFields1 >> 22) & 0x3FF; set => _bitFields1 = (_bitFields1 & ~(0x3FFu << 22)) | ((value & 0x3FF) << 22); }
+        // end
 
         public uint level;
         public uint idrPeriod;
@@ -950,33 +1205,193 @@ internal static unsafe class NvEncodeAPI
         public fixed ulong reserved2[64];
     }
 
+    /// <summary>
+    /// H264 Video Usability Info (VUI) parameters.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
-    public struct NV_ENC_CONFIG_H264_VUI_PARAMETERS
+    public unsafe struct NV_ENC_CONFIG_H264_VUI_PARAMETERS
     {
+        /// <summary> [in]: If set to 1 , it specifies that the overscanInfo is present </summary>
         public uint overscanInfoPresentFlag;
+
+        /// <summary> [in]: Specifies the overscan info(as defined in Annex E of the ITU-T Specification). </summary>
         public uint overscanInfo;
+
+        /// <summary> [in]: If set to 1, it specifies  that the videoFormat, videoFullRangeFlag and colourDescriptionPresentFlag are present. </summary>
         public uint videoSignalTypePresentFlag;
+
+        /// <summary> [in]: Specifies the source video format(as defined in Annex E of the ITU-T Specification). </summary>
         public NV_ENC_VUI_VIDEO_FORMAT videoFormat;
+
+        /// <summary> [in]: Specifies the output range of the luma and chroma samples(as defined in Annex E of the ITU-T Specification). </summary>
         public uint videoFullRangeFlag;
+
+        /// <summary> [in]: If set to 1, it specifies that the colourPrimaries, transferCharacteristics and colourMatrix are present. </summary>
         public uint colourDescriptionPresentFlag;
+
+        /// <summary> [in]: Specifies color primaries for converting to RGB(as defined in Annex E of the ITU-T Specification) </summary>
         public NV_ENC_VUI_COLOR_PRIMARIES colourPrimaries;
+
+        /// <summary> [in]: Specifies the opto-electronic transfer characteristics to use (as defined in Annex E of the ITU-T Specification) </summary>
         public NV_ENC_VUI_TRANSFER_CHARACTERISTIC transferCharacteristics;
+
+        /// <summary> [in]: Specifies the matrix coefficients used in deriving the luma and chroma from the RGB primaries (as defined in Annex E of the ITU-T Specification). </summary>
         public NV_ENC_VUI_MATRIX_COEFFS colourMatrix;
 
+        /// <summary> [in]: If set to 1 , it specifies that the chromaSampleLocationTop and chromaSampleLocationBot are present. </summary>
         public uint chromaSampleLocationFlag;
+
+        /// <summary> [in]: Specifies the chroma sample location for top field(as defined in Annex E of the ITU-T Specification) </summary>
         public uint chromaSampleLocationTop;
+
+        /// <summary> [in]: Specifies the chroma sample location for bottom field(as defined in Annex E of the ITU-T Specification) </summary>
         public uint chromaSampleLocationBot;
+
+        /// <summary> [in]: If set to 1, it specifies the bitstream restriction parameters are present in the bitstream. </summary>
         public uint bitstreamRestrictionFlag;
+
+        /// <summary> 
+        /// [in]: If set to 1, it specifies that the timingInfo is present and the 'numUnitInTicks' and 'timeScale' fields are specified by the application.
+        /// [in]: If not set, the timingInfo may still be present with timing related fields calculated internally basedon the frame rate specified by the application.
+        /// </summary>
         public uint timingInfoPresentFlag;
+
+        /// <summary> [in]: Specifies the number of time units of the clock(as defined in Annex E of the ITU-T Specification). </summary>
         public uint numUnitInTicks;
+
+        /// <summary> [in]: Specifies the frquency of the clock(as defined in Annex E of the ITU-T Specification). </summary>
         public uint timeScale;
+
+        /// <summary> Reserved and must be set to 0 </summary>
         public fixed uint reserved[12];
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_CODEC_CONFIG  — union, 1280 bytes = 320 uints
-    // ═══════════════════════════════════════════════════════════════
+    /// <summary>
+    /// AV1 Film Grain Parameters structure
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct NV_ENC_FILM_GRAIN_PARAMS_AV1
+    {
+        private uint _bitFields;
+        public uint applyGrain { get => _bitFields & 1u; set => _bitFields = (_bitFields & ~1u) | (value & 1u); }
+        public uint chromaScalingFromLuma { get => (_bitFields >> 1) & 1u; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1u) << 1); }
+        public uint overlapFlag { get => (_bitFields >> 2) & 1u; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1u) << 2); }
+        public uint clipToRestrictedRange { get => (_bitFields >> 3) & 1u; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1u) << 3); }
+        public uint grainScalingMinus8 { get => (_bitFields >> 4) & 3u; set => _bitFields = (_bitFields & ~(3u << 4)) | ((value & 3u) << 4); }
+        public uint arCoeffLag { get => (_bitFields >> 6) & 3u; set => _bitFields = (_bitFields & ~(3u << 6)) | ((value & 3u) << 6); }
+        public uint numYPoints { get => (_bitFields >> 8) & 0xFu; set => _bitFields = (_bitFields & ~(0xFu << 8)) | ((value & 0xFu) << 8); }
+        public uint numCbPoints { get => (_bitFields >> 12) & 0xFu; set => _bitFields = (_bitFields & ~(0xFu << 12)) | ((value & 0xFu) << 12); }
+        public uint numCrPoints { get => (_bitFields >> 16) & 0xFu; set => _bitFields = (_bitFields & ~(0xFu << 16)) | ((value & 0xFu) << 16); }
+        public uint arCoeffShiftMinus6 { get => (_bitFields >> 20) & 3u; set => _bitFields = (_bitFields & ~(3u << 20)) | ((value & 3u) << 20); }
+        public uint grainScaleShift { get => (_bitFields >> 22) & 3u; set => _bitFields = (_bitFields & ~(3u << 22)) | ((value & 3u) << 22); }
+        public uint reserved1 { get => (_bitFields >> 24) & 0xFFu; set => _bitFields = (_bitFields & ~(0xFFu << 24)) | ((value & 0xFFu) << 24); }
 
+        public fixed byte pointYValue[14];
+        public fixed byte pointYScaling[14];
+        public fixed byte pointCbValue[10];
+        public fixed byte pointCbScaling[10];
+        public fixed byte pointCrValue[10];
+        public fixed byte pointCrScaling[10];
+        public fixed byte arCoeffsYPlus128[24];
+        public fixed byte arCoeffsCbPlus128[25];
+        public fixed byte arCoeffsCrPlus128[25];
+        public fixed byte reserved2[2];
+        public byte cbMult;
+        public byte cbLumaMult;
+        public ushort cbOffset;
+        public byte crMult;
+        public byte crLumaMult;
+        public ushort crOffset;
+    }
+
+    /// <summary>
+    /// AV1 encoder configuration parameters to be set during initialization.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CONFIG_AV1
+    {
+        public uint level;
+        public uint tier;
+        public NV_ENC_AV1_PART_SIZE minPartSize;
+        public NV_ENC_AV1_PART_SIZE maxPartSize;
+        private uint _bitFields;
+        public uint outputAnnexBFormat { get => _bitFields & 1u; set => _bitFields = (_bitFields & ~1u) | (value & 1u); }
+        public uint enableTimingInfo { get => (_bitFields >> 1) & 1u; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1u) << 1); }
+        public uint enableDecoderModelInfo { get => (_bitFields >> 2) & 1u; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1u) << 2); }
+        public uint enableFrameIdNumbers { get => (_bitFields >> 3) & 1u; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1u) << 3); }
+        public uint disableSeqHdr { get => (_bitFields >> 4) & 1u; set => _bitFields = (_bitFields & ~(1u << 4)) | ((value & 1u) << 4); }
+        public uint repeatSeqHdr { get => (_bitFields >> 5) & 1u; set => _bitFields = (_bitFields & ~(1u << 5)) | ((value & 1u) << 5); }
+        public uint enableIntraRefresh { get => (_bitFields >> 6) & 1u; set => _bitFields = (_bitFields & ~(1u << 6)) | ((value & 1u) << 6); }
+        public uint chromaFormatIDC { get => (_bitFields >> 7) & 0x3u; set => _bitFields = (_bitFields & ~(0x3u << 7)) | ((value & 0x3u) << 7); }
+        public uint enableBitstreamPadding { get => (_bitFields >> 9) & 1u; set => _bitFields = (_bitFields & ~(1u << 9)) | ((value & 1u) << 9); }
+        public uint enableCustomTileConfig { get => (_bitFields >> 10) & 1u; set => _bitFields = (_bitFields & ~(1u << 10)) | ((value & 1u) << 10); }
+        public uint enableFilmGrainParams { get => (_bitFields >> 11) & 1u; set => _bitFields = (_bitFields & ~(1u << 11)) | ((value & 1u) << 11); }
+        public uint reserved4 { get => (_bitFields >> 12) & 0x3Fu; set => _bitFields = (_bitFields & ~(0x3Fu << 12)) | ((value & 0x3Fu) << 12); }
+        public uint reserved { get => (_bitFields >> 18) & 0x3FFFu; set => _bitFields = (_bitFields & ~(0x3FFFu << 18)) | ((value & 0x3FFFu) << 18); }
+
+        public uint idrPeriod;
+        public uint intraRefreshPeriod;
+        public uint intraRefreshCnt;
+        public uint maxNumRefFramesInDPB;
+        public uint numTileColumns;
+        public uint numTileRows;
+        public uint reserved2;
+        public uint* tileWidths;
+        public uint* tileHeights;
+        public uint maxTemporalLayersMinus1;
+        public NV_ENC_VUI_COLOR_PRIMARIES colorPrimaries;
+        public NV_ENC_VUI_TRANSFER_CHARACTERISTIC transferCharacteristics;
+        public NV_ENC_VUI_MATRIX_COEFFS matrixCoefficients;
+        public uint colorRange;
+        public uint chromaSamplePosition;
+        public NV_ENC_BFRAME_REF_MODE useBFramesAsRef;
+        public void* filmGrainParams;
+        public NV_ENC_NUM_REF_FRAMES numFwdRefs;
+        public NV_ENC_NUM_REF_FRAMES numBwdRefs;
+        public NV_ENC_BIT_DEPTH outputBitDepth;
+        public NV_ENC_BIT_DEPTH inputBitDepth;
+        public fixed uint reserved1[233];
+        public fixed ulong reserved3[62];
+    }
+
+    /// <summary>
+    /// H264 encoder configuration parameters for ME only Mode
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CONFIG_H264_MEONLY
+    {
+        private uint _bitFields;
+        public uint disablePartition16x16 { get => _bitFields & 1u; set => _bitFields = (_bitFields & ~1u) | (value & 1u); }
+        public uint disablePartition8x16 { get => (_bitFields >> 1) & 1u; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1u) << 1); }
+        public uint disablePartition16x8 { get => (_bitFields >> 2) & 1u; set => _bitFields = (_bitFields & ~(1u << 2)) | ((value & 1u) << 2); }
+        public uint disablePartition8x8 { get => (_bitFields >> 3) & 1u; set => _bitFields = (_bitFields & ~(1u << 3)) | ((value & 1u) << 3); }
+        public uint disableIntraSearch { get => (_bitFields >> 4) & 1u; set => _bitFields = (_bitFields & ~(1u << 4)) | ((value & 1u) << 4); }
+        public uint bStereoEnable { get => (_bitFields >> 5) & 1u; set => _bitFields = (_bitFields & ~(1u << 5)) | ((value & 1u) << 5); }
+        public uint reservedBitFields { get => (_bitFields >> 6) & 0x3FFFFFFu; set => _bitFields = (_bitFields & ~(0x3FFFFFFu << 6)) | ((value & 0x3FFFFFFu) << 6); }
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[255];
+
+        /// <summary> [in]: Reserved and must be set to NULL </summary>
+        public fixed ulong reserved2[64];
+    }
+
+    /// <summary>
+    /// HEVC encoder configuration parameters for ME only Mode
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CONFIG_HEVC_MEONLY
+    {
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved[256];
+
+        /// <summary> [in]: Reserved and must be set to NULL </summary>
+        public fixed ulong reserved1[64];
+    }
+
+    /// <summary>
+    /// Codec-specific encoder configuration parameters to be set during initialization. (UNION)
+    /// </summary>
     [StructLayout(LayoutKind.Explicit, Size = 1792)]
     public struct NV_ENC_CODEC_CONFIG
     {
@@ -991,10 +1406,9 @@ internal static unsafe class NvEncodeAPI
         public unsafe fixed uint reserved[448];
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_CONFIG  — 3072 bytes
-    // ═══════════════════════════════════════════════════════════════
-
+    /// <summary>
+    /// Encoder configuration parameters to be set during initialization.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_CONFIG
     {
@@ -1020,10 +1434,9 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_PRESET_CONFIG  — 4104 bytes
-    // ═══════════════════════════════════════════════════════════════
-
+    /// <summary>
+    /// Encoder preset config
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_PRESET_CONFIG
     {
@@ -1043,10 +1456,39 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS
-    // ═══════════════════════════════════════════════════════════════
+    /// <summary>
+    /// Event registration/unregistration parameters.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_EVENT_PARAMS
+    {
+        /// <summary> [in]: Struct version. Must be set to ::NV_ENC_EVENT_PARAMS_VER. </summary>
+        public uint version;
 
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public uint reserved;
+
+        /// <summary> [in]: Handle to event to be registered/unregistered with the NvEncodeAPI interface. </summary>
+        public void* completionEvent;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[254];
+
+        /// <summary> [in]: Reserved and must be set to NULL </summary>
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_EVENT_PARAMS Create()
+        {
+            return new NV_ENC_EVENT_PARAMS
+            {
+                version = StructVersion(2)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Encoder Session Creation parameters
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS
     {
@@ -1068,11 +1510,9 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_INITIALIZE_PARAMS
-    // From nvEncodeAPI.h v12 — field order matches exactly
-    // ═══════════════════════════════════════════════════════════════
-
+    /// <summary>
+    /// Encode Session Initialization parameters.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_INITIALIZE_PARAMS
     {
@@ -1128,6 +1568,56 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
+    /// <summary>
+    /// Encode Session Reconfigured parameters.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_RECONFIGURE_PARAMS
+    {
+        /// <summary> [in]: Struct version. Must be set to ::NV_ENC_RECONFIGURE_PARAMS_VER. </summary>
+        public uint version;
+
+        /// <summary> [in]: Reserved and must be set to 0 */ </summary>
+        public uint reserved;
+
+        /// <summary> 
+        /// [in]: Encoder session re-initialization parameters.
+        /// If reInitEncodeParams.encodeConfig is NULL and reInitEncodeParams.presetGUID is the same as the preset
+        /// GUID specified on the call to NvEncInitializeEncoder(), EncodeAPI will continue to use the existing encode
+        /// configuration. If reInitEncodeParams.encodeConfig is NULL and reInitEncodeParams.presetGUID is different from the preset
+        /// GUID specified on the call to NvEncInitializeEncoder(), EncodeAPI will try to use the default configuration for
+        /// the preset specified by reInitEncodeParams.presetGUID. In this case, reconfiguration may fail if the new
+        /// configuration is incompatible with the existing configuration (e.g. the new configuration results in a change in the GOP structure).
+        /// </summary>
+        public NV_ENC_INITIALIZE_PARAMS reInitEncodeParams;
+        private uint _bitFields;
+
+        /// <summary> [in]: Set to 1 to reset the encoder. </summary>
+        public uint resetEncoder { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+
+        /// <summary> [in]: Set to 1 to force an IDR frame. </summary>
+        public uint forceIDR { get => (_bitFields >> 1) & 1; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1) << 1); }
+
+        /// <summary> [in]: Reserved bitfields (30 bits). </summary>
+        public uint reserved1 { get => (_bitFields >> 2) & 0x3FFFFFFF; set => _bitFields = (_bitFields & ~(0x3FFFFFFFu << 2)) | ((value & 0x3FFFFFFF) << 2); }
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public uint reserved2;
+
+        public static NV_ENC_RECONFIGURE_PARAMS Create()
+        {
+            var config = new NV_ENC_RECONFIGURE_PARAMS();
+            config.version = StructVersion(2) | (1u << 31);
+            config.reInitEncodeParams = NV_ENC_INITIALIZE_PARAMS.Create();
+
+            return config;
+        }
+    }
+
+    /// <summary>
+    /// External motion vector hint counts per block type.
+    /// H264 and AV1 support multiple hint while HEVC supports one hint for each valid candidate.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE
     {
@@ -1143,10 +1633,66 @@ internal static unsafe class NvEncodeAPI
         public fixed uint reserved1[3];
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_REGISTER_RESOURCE
-    // ═══════════════════════════════════════════════════════════════
+    /// <summary>
+    /// External Motion Vector hint structure for H264 and HEVC.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NVENC_EXTERNAL_ME_HINT
+    {
+        private int _bitFields;
 
+        /// <summary> [in]: The x component of MV in quarter-pel units (12 bits) </summary>
+        public int mvx { get => (_bitFields << 20) >> 20; set => _bitFields = (_bitFields & ~0xFFF) | (value & 0xFFF); }
+
+        /// <summary> [in]: The y component of MV in quarter-pel units (10 bits) </summary>
+        public int mvy { get => (_bitFields << 10) >> 22; set => _bitFields = (_bitFields & ~(0x3FF << 12)) | ((value & 0x3FF) << 12); }
+
+        /// <summary> [in]: Reference index (5 bits) </summary>
+        public int refidx { get => (_bitFields >> 22) & 0x1F; set => _bitFields = (_bitFields & ~(0x1F << 22)) | ((value & 0x1F) << 22); }
+
+        /// <summary> [in]: Direction (1 bit) </summary>
+        public int dir { get => (_bitFields >> 27) & 0x1; set => _bitFields = (_bitFields & ~(0x1 << 27)) | ((value & 0x1) << 27); }
+
+        /// <summary> [in]: Partition type (2 bits) </summary>
+        public int partType { get => (int)(((uint)_bitFields >> 28) & 0x3); set => _bitFields = (int)(((uint)_bitFields & ~(0x3u << 28)) | ((uint)(value & 0x3) << 28)); }
+
+        /// <summary> [in]: Last of partition (1 bit) </summary>
+        public int lastofPart { get => (_bitFields >> 30) & 0x1; set => _bitFields = (_bitFields & ~(0x1 << 30)) | ((value & 0x1) << 30); }
+
+        /// <summary> [in]: Last of macroblock (1 bit) </summary>
+        public int lastOfMB { get => (int)((uint)_bitFields >> 31); set => _bitFields = (int)(((uint)_bitFields & ~(1u << 31)) | (((uint)value & 0x1u) << 31)); }
+    }
+
+    /// <summary>
+    /// External Motion Vector SB hint structure for AV1
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NVENC_EXTERNAL_ME_SB_HINT
+    {
+        private ushort _f0; // refidx(5), direction(1), bi(1), partition_type(3), x8(3), last_of_cu(1), last_of_sb(1), reserved0(1)
+        private ushort _f1; // mvx(14), cu_size(2)
+        private ushort _f2; // mvy(12), y8(3), reserved1(1)
+
+        public int refidx { get => _f0 & 0x1F; set => _f0 = (ushort)((_f0 & ~0x1F) | (value & 0x1F)); }
+        public int direction { get => (_f0 >> 5) & 0x1; set => _f0 = (ushort)((_f0 & ~(1 << 5)) | ((value & 1) << 5)); }
+        public int bi { get => (_f0 >> 6) & 0x1; set => _f0 = (ushort)((_f0 & ~(1 << 6)) | ((value & 1) << 6)); }
+        public int partition_type { get => (_f0 >> 7) & 0x7; set => _f0 = (ushort)((_f0 & ~(0x7 << 7)) | ((value & 0x7) << 7)); }
+        public int x8 { get => (_f0 >> 10) & 0x7; set => _f0 = (ushort)((_f0 & ~(0x7 << 10)) | ((value & 0x7) << 10)); }
+        public int last_of_cu { get => (_f0 >> 13) & 0x1; set => _f0 = (ushort)((_f0 & ~(1 << 13)) | ((value & 1) << 13)); }
+        public int last_of_sb { get => (_f0 >> 14) & 0x1; set => _f0 = (ushort)((_f0 & ~(1 << 14)) | ((value & 1) << 14)); }
+        public int reserved0 { get => (_f0 >> 15) & 0x1; set => _f0 = (ushort)((_f0 & ~(1 << 15)) | ((value & 1) << 15)); }
+
+        public int mvx { get => (short)(_f1 << 2) >> 2; set => _f1 = (ushort)((_f1 & ~0x3FFF) | (value & 0x3FFF)); }
+        public int cu_size { get => (_f1 >> 14) & 0x3; set => _f1 = (ushort)((_f1 & ~(0x3 << 14)) | ((value & 0x3) << 14)); }
+
+        public int mvy { get => (short)(_f2 << 4) >> 4; set => _f2 = (ushort)((_f2 & ~0xFFF) | (value & 0xFFF)); }
+        public int y8 { get => (_f2 >> 12) & 0x7; set => _f2 = (ushort)((_f2 & ~(0x7 << 12)) | ((value & 0x7) << 12)); }
+        public int reserved1 { get => (_f2 >> 15) & 0x1; set => _f2 = (ushort)((_f2 & ~(1 << 15)) | ((value & 1) << 15)); }
+    }
+
+    /// <summary>
+    /// Register a resource for future use with the Nvidia Video Encoder Interface.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_REGISTER_RESOURCE
     {
@@ -1175,20 +1721,146 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_MAP_INPUT_RESOURCE
-    // ═══════════════════════════════════════════════════════════════
+    /// <summary>
+    /// Encode Stats structure.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_STAT
+    {
+        /// <summary> [in]:  Struct version. Must be set to ::NV_ENC_STAT_VER. </summary>
+        public uint version;
 
+        /// <summary> [in]:  Reserved and must be set to 0 </summary>
+        public uint reserved;
+
+        /// <summary> [in]: Specifies the pointer to output bitstream. </summary>
+        public void* outputBitStream;
+
+        /// <summary> [out]: Size of generated bitstream in bytes. </summary>
+        public uint bitStreamSize;
+
+        /// <summary> [out]: Picture type of encoded picture. See ::NV_ENC_PIC_TYPE. </summary>
+        public uint picType;
+
+        /// <summary> [out]: Offset of last valid bytes of completed bitstream </summary>
+        public uint lastValidByteOffset;
+
+        /// <summary> [out]: Offsets of each slice </summary>
+        public fixed uint sliceOffsets[16];
+
+        /// <summary> [out]: Picture number </summary>
+        public uint picIdx;
+
+        /// <summary> [out]: Average QP of the frame. </summary>
+        public uint frameAvgQP;
+        private uint _bitFields;
+
+        /// <summary> [out]: Flag indicating this frame is marked as LTR frame </summary>
+        public uint ltrFrame { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+
+        /// <summary> [in]:  Reserved bitfields and must be set to 0 </summary>
+        public uint reservedBitFields { get => (_bitFields >> 1) & 0x7FFFFFFF; set => _bitFields = (_bitFields & ~(0x7FFFFFFFu << 1)) | ((value & 0x7FFFFFFF) << 1); }
+
+        /// <summary> [out]: Frame index associated with this LTR frame. </summary>
+        public uint ltrFrameIdx;
+
+        /// <summary> [out]: For H264, Number of Intra MBs in the encoded frame. For HEVC, Number of Intra CTBs in the encoded frame. </summary>
+        public uint intraMBCount;
+
+        /// <summary> [out]: For H264, Number of Inter MBs in the encoded frame, includes skip MBs. For HEVC, Number of Inter CTBs in the encoded frame. </summary>
+        public uint interMBCount;
+
+        /// <summary> [out]: Average Motion Vector in X direction for the encoded frame. </summary>
+        public int averageMVX;
+
+        /// <summary> [out]: Average Motion Vector in y direction for the encoded frame. </summary>
+        public int averageMVY;
+
+        /// <summary> [in]:  Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[227];
+
+        /// <summary> [in]:  Reserved and must be set to NULL </summary>
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_STAT Create()
+        {
+            return new NV_ENC_STAT
+            {
+                version = StructVersion(2)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Sequence and picture paramaters payload.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_SEQUENCE_PARAM_PAYLOAD
+    {
+        /// <summary> [in]:  Struct version. Must be set to ::NV_ENC_INITIALIZE_PARAMS_VER. </summary>
+        public uint version;
+
+        /// <summary> [in]:  Specifies the size of the spsppsBuffer provided by the client </summary>
+        public uint inBufferSize;
+
+        /// <summary> [in]:  Specifies the SPS id to be used in sequence header. Default value is 0. </summary>
+        public uint spsId;
+
+        /// <summary> [in]:  Specifies the PPS id to be used in picture header. Default value is 0. </summary>
+        public uint ppsId;
+
+        /// <summary> 
+        /// Specifies bitstream header pointer of size NV_ENC_SEQUENCE_PARAM_PAYLOAD::inBufferSize.
+        /// It is the client's responsibility to manage this memory.
+        /// </summary>
+        public void* spsppsBuffer;
+
+        /// <summary> [out]: Size of the sequence and picture header in bytes. </summary>
+        public uint* outSPSPPSPayloadSize;
+
+        /// <summary> [in]:  Reserved and must be set to 0  </summary>
+        public fixed uint reserved[250];
+
+        /// <summary> [in]:  Reserved and must be set to NULL </summary>
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_SEQUENCE_PARAM_PAYLOAD Create()
+        {
+            return new NV_ENC_SEQUENCE_PARAM_PAYLOAD
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Map an input resource to a Nvidia Encoder Input Buffer
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_MAP_INPUT_RESOURCE
     {
+        /// <summary> [in]:  Struct version. Must be set to ::NV_ENC_MAP_INPUT_RESOURCE_VER. </summary>
         public uint version;
+
+        /// <summary> [in]:  Deprecated. Do not use. </summary>
         public uint subResourceIndex;
+
+        /// <summary> [in]:  Deprecated. Do not use. </summary>
         public void* inputResource;
+
+        /// <summary> [in]:  The Registered resource handle obtained by calling NvEncRegisterInputResource. </summary>
         public void* registeredResource;
+
+        /// <summary> [out]: Mapped pointer corresponding to the registeredResource. This pointer must be used in NV_ENC_PIC_PARAMS::inputBuffer parameter in ::NvEncEncodePicture() API. </summary>
         public void* mappedResource;
+
+        /// <summary> [out]: Buffer format of the outputResource. This buffer format must be used in NV_ENC_PIC_PARAMS::bufferFmt if client using the above mapped resource pointer. </summary>
         public NV_ENC_BUFFER_FORMAT mappedBufferFmt;
+
+        /// <summary> [in]:  Reserved and must be set to 0. </summary>
         public fixed uint reserved1[251];
+
+        /// <summary> [in]:  Reserved and must be set to NULL </summary>
         public fixed ulong reserved2[63];
 
         public static NV_ENC_MAP_INPUT_RESOURCE Create()
@@ -1200,10 +1872,138 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_PIC_PARAMS
-    // ═══════════════════════════════════════════════════════════════
+    /// <summary>
+    /// NV_ENC_REGISTER_RESOURCE::resourceToRegister must be a pointer to a variable of this type,
+    /// when NV_ENC_REGISTER_RESOURCE::resourceType is NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_INPUT_RESOURCE_OPENGL_TEX
+    {
+        /// <summary> [in]: The name of the texture to be used. </summary>
+        public uint texture;
 
+        /// <summary> [in]: Accepted values are GL_TEXTURE_RECTANGLE and GL_TEXTURE_2D. </summary>
+        public uint target;
+    }
+
+    /// <summary>
+    /// Fence and fence value for synchronization.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_FENCE_POINT_D3D12
+    {
+        /// <summary> [in]: Struct version. Must be set to ::NV_ENC_FENCE_POINT_D3D12_VER. </summary>
+        public uint version;
+
+        /// <summary> [in]: Reserved and must be set to 0. </summary>
+        public uint reserved;
+
+        /// <summary> [in]: Pointer to ID3D12Fence. This fence object is used for synchronization. </summary>
+        public void* pFence;
+
+        /// <summary> [in]: Fence value to reach or exceed before the GPU operation. </summary>
+        public ulong waitValue;
+
+        /// <summary> [in]: Fence value to set the fence to, after the GPU operation. </summary>
+        public ulong signalValue;
+        private uint _bitFields;
+
+        /// <summary> [in]: Wait on 'waitValue' if bWait is set to 1, before starting GPU operation. </summary>
+        public uint bWait { get => _bitFields & 1u; set => _bitFields = (_bitFields & ~1u) | (value & 1u); }
+
+        /// <summary> [in]: Signal on 'signalValue' if bSignal is set to 1, after GPU operation is complete. </summary>
+        public uint bSignal { get => (_bitFields >> 1) & 1u; set => _bitFields = (_bitFields & ~(1u << 1)) | ((value & 1u) << 1); }
+
+        /// <summary> [in]: Reserved and must be set to 0. </summary>
+        public uint reservedBitField { get => (_bitFields >> 2) & 0x3FFFFFFFu; set => _bitFields = (_bitFields & ~(0x3FFFFFFFu << 2)) | ((value & 0x3FFFFFFFu) << 2); }
+
+        /// <summary> [in]: Reserved and must be set to 0. </summary>
+        public fixed uint reserved1[7];
+
+        public static NV_ENC_FENCE_POINT_D3D12 Create()
+        {
+            return new NV_ENC_FENCE_POINT_D3D12
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    /// <summary>
+    /// NV_ENC_PIC_PARAMS::inputBuffer and NV_ENC_PIC_PARAMS::alphaBuffer must be a pointer to a struct of this type, when D3D12 interface is used
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_INPUT_RESOURCE_D3D12
+    {
+        /// <summary> [in]: Struct version. Must be set to ::NV_ENC_INPUT_RESOURCE_D3D12_VER. </summary>
+        public uint version;
+
+        /// <summary> [in]: Reserved and must be set to 0. </summary>
+        public uint reserved;
+
+        /// <summary>
+        /// [in]: Specifies the input surface pointer. Client must use a pointer obtained from NvEncMapInputResource() in NV_ENC_MAP_INPUT_RESOURCE::mappedResource
+        /// when mapping the input surface.
+        /// </summary>
+        public void* pInputBuffer;
+
+        /// <summary> [in]: Specifies the fence and corresponding fence values to do GPU wait and signal. </summary>
+        public NV_ENC_FENCE_POINT_D3D12 inputFencePoint;
+
+        /// <summary> [in]: Reserved and must be set to 0. </summary>
+        public fixed uint reserved1[16];
+
+        /// <summary> [in]: Reserved and must be set to NULL. </summary>
+        public fixed ulong reserved2[16];
+
+        public static NV_ENC_INPUT_RESOURCE_D3D12 Create()
+        {
+            return new NV_ENC_INPUT_RESOURCE_D3D12
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    /// <summary>
+    /// NV_ENC_PIC_PARAMS::outputBitstream and NV_ENC_LOCK_BITSTREAM::outputBitstream must be a pointer to a struct of this type, when D3D12 interface is used
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_OUTPUT_RESOURCE_D3D12
+    {
+        /// <summary> [in]: Struct version. Must be set to ::NV_ENC_OUTPUT_RESOURCE_D3D12_VER. </summary>
+        public uint version;
+
+        /// <summary> [in]: Reserved and must be set to 0. </summary>
+        public uint reserved;
+
+        /// <summary>
+        /// [in]: Specifies the output buffer pointer. Client must use a pointer obtained from NvEncMapInputResource() in NV_ENC_MAP_INPUT_RESOURCE::mappedResource
+        /// when mapping output bitstream buffer
+        /// </summary>
+        public void* pOutputBuffer;
+
+        /// <summary> [in]: Specifies the fence and corresponding fence values to do GPU wait and signal. </summary>
+        public NV_ENC_FENCE_POINT_D3D12 outputFencePoint;
+
+        /// <summary> [in]: Reserved and must be set to 0. </summary>
+        public fixed uint reserved1[16];
+
+        /// <summary> [in]: Reserved and must be set to NULL. </summary>
+        public fixed ulong reserved2[16];
+
+        public static NV_ENC_OUTPUT_RESOURCE_D3D12 Create()
+        {
+            return new NV_ENC_OUTPUT_RESOURCE_D3D12
+            {
+                version = StructVersion(5)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Encoding parameters that need to be sent on a per frame basis.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_PIC_PARAMS
     {
@@ -1380,6 +2180,22 @@ internal static unsafe class NvEncodeAPI
         public fixed uint reserved1[32];
     }
 
+    /// <summary>
+    /// User SEI message
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_SEI_PAYLOAD
+    {
+        /// <summary> [in] SEI payload size in bytes. SEI payload must be byte aligned, as described in Annex D </summary>
+        public uint payloadSize;
+
+        /// <summary> [in] SEI payload types and syntax can be found in Annex D of the H.264 Specification. </summary>
+        public uint payloadType;
+
+        /// <summary> [in] pointer to user data </summary>
+        public void* payload;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_PIC_PARAMS_MVC
     {
@@ -1399,10 +2215,42 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_LOCK_BITSTREAM
-    // ═══════════════════════════════════════════════════════════════
+    /// <summary>
+    /// MEOnly parameters that need to be sent on a per motion estimation basis.
+    /// NV_ENC_MEONLY_PARAMS::meExternalHints is supported for H264 only.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_MEONLY_PARAMS
+    {
+        public uint version;
+        public uint inputWidth;
+        public uint inputHeight;
+        public uint reserved;
+        public void* inputBuffer;
+        public void* referenceFrame;
+        public void* mvBuffer;
+        public uint reserved2;
+        public NV_ENC_BUFFER_FORMAT bufferFmt;
+        public void* completionEvent;
+        public uint viewID;
+        public NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE meHintCountsPerBlock0;
+        public NVENC_EXTERNAL_ME_HINT_COUNTS_PER_BLOCKTYPE meHintCountsPerBlock1;
+        public void* meExternalHints;
+        public fixed uint reserved1[241];
+        public fixed ulong reserved3[59];
 
+        public static NV_ENC_MEONLY_PARAMS Create()
+        {
+            return new NV_ENC_MEONLY_PARAMS
+            {
+                version = StructVersion(4)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Bitstream buffer lock parameters.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_LOCK_BITSTREAM
     {
@@ -1452,20 +2300,176 @@ internal static unsafe class NvEncodeAPI
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NV_ENC_CREATE_BITSTREAM_BUFFER
-    // ═══════════════════════════════════════════════════════════════
+    /// <summary>
+    /// Uncompressed Input Buffer lock parameters.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_LOCK_INPUT_BUFFER
+    {
+        /// <summary> [in]:  Struct version. Must be set to ::NV_ENC_LOCK_INPUT_BUFFER_VER. </summary>
+        public uint version;
+        private uint _bitFields;
 
+        /// <summary> [in]:  Set to 1 to make ::NvEncLockInputBuffer() a unblocking call. If the encoding is not completed, driver will return ::NV_ENC_ERR_ENCODER_BUSY error code. </summary>
+        public uint doNotWait { get => _bitFields & 1; set => _bitFields = (_bitFields & ~1u) | (value & 1); }
+
+        /// <summary> [in]:  Reserved bitfields and must be set to 0 </summary>
+        public uint reservedBitFields { get => (_bitFields >> 1) & 0x7FFFFFFF; set => _bitFields = (_bitFields & ~(0x7FFFFFFFu << 1)) | ((value & 0x7FFFFFFF) << 1); }
+
+        /// <summary> [in]:  Pointer to the input buffer to be locked, client should pass the pointer obtained from ::NvEncCreateInputBuffer() or ::NvEncMapInputResource API. </summary>
+        public void* inputBuffer;
+
+        /// <summary> [out]: Pointed to the locked input buffer data. Client can only access input buffer using the \p bufferDataPtr. </summary>
+        public void* bufferDataPtr;
+
+        /// <summary> [out]: Pitch of the locked input buffer. </summary>
+        public uint pitch;
+
+        /// <summary> [in]:  Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[251];
+
+        /// <summary> [in]:  Reserved and must be set to NULL </summary>
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_LOCK_INPUT_BUFFER Create()
+        {
+            return new NV_ENC_LOCK_INPUT_BUFFER
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Encoder Output parameters
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_ENCODE_OUT_PARAMS
+    {
+        /// <summary> [out]: Struct version. </summary>
+        public uint version;
+
+        /// <summary> [out]: Encoded bitstream size in bytes </summary>
+        public uint bitstreamSizeInBytes;
+
+        /// <summary> [out]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved[62];
+
+        public static NV_ENC_ENCODE_OUT_PARAMS Create()
+        {
+            return new NV_ENC_ENCODE_OUT_PARAMS
+            {
+                version = StructVersion(1)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Lookahead picture parameters
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_LOOKAHEAD_PIC_PARAMS
+    {
+        /// <summary> [in]: Struct version. </summary>
+        public uint version;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public uint reserved;
+
+        /// <summary> [in]: Specifies the input buffer pointer. Client must use a pointer obtained from ::NvEncCreateInputBuffer() or ::NvEncMapInputResource() APIs. </summary>
+        public void* inputBuffer;
+
+        /// <summary> [in]: Specifies input picture type. Client required to be set explicitly by the client if the client has not set NV_ENC_INITALIZE_PARAMS::enablePTD to 1 while calling NvInitializeEncoder. </summary>
+        public NV_ENC_PIC_TYPE pictureType;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[63];
+
+        /// <summary> [in]: Reserved and must be set to NULL </summary>
+        public fixed ulong reserved2[64];
+
+        public static NV_ENC_LOOKAHEAD_PIC_PARAMS Create()
+        {
+            return new NV_ENC_LOOKAHEAD_PIC_PARAMS
+            {
+                version = StructVersion(2)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Creation parameters for input buffer.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CREATE_INPUT_BUFFER
+    {
+        /// <summary> [in]: Struct version. Must be set to ::NV_ENC_CREATE_INPUT_BUFFER_VER </summary>
+        public uint version;
+
+        /// <summary> [in]: Input frame width </summary>
+        public uint width;
+
+        /// <summary> [in]: Input frame height </summary>
+        public uint height;
+
+        /// <summary> [in]: Deprecated. Do not use </summary>
+        public NV_ENC_MEMORY_HEAP memoryHeap;
+
+        /// <summary> [in]: Input buffer format </summary>
+        public NV_ENC_BUFFER_FORMAT bufferFmt;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public uint reserved;
+
+        /// <summary> [out]: Pointer to input buffer </summary>
+        public void* inputBuffer;
+
+        /// <summary> [in]: Pointer to existing system memory buffer </summary>
+        public void* pSysMemBuffer;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
+        public fixed uint reserved1[58];
+
+        /// <summary> [in]: Reserved and must be set to NULL </summary>
+        public fixed ulong reserved2[63];
+
+        public static NV_ENC_CREATE_INPUT_BUFFER Create()
+        {
+            return new NV_ENC_CREATE_INPUT_BUFFER
+            {
+                version = StructVersion(2)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Creation parameters for output bitstream buffer.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct NV_ENC_CREATE_BITSTREAM_BUFFER
     {
+        /// <summary> [in]: Struct version. Must be set to ::NV_ENC_CREATE_BITSTREAM_BUFFER_VER </summary>
         public uint version;
+
+        /// <summary> [in]: Deprecated. Do not use </summary>
         public uint size;
+
+        /// <summary> [in]: Deprecated. Do not use </summary>
         public NV_ENC_MEMORY_HEAP memoryHeap;
+
+        /// <summary> [in]: Reserved and must be set to 0 </summary>
         public uint reserved;
+
+        /// <summary> [out]: Pointer to the output bitstream buffer </summary>
         public void* bitstreamBuffer;
+
+        /// <summary> [out]: Reserved and should not be used </summary>
         public void* bitstreamBufferPtr;
+
+        /// <summary> [in]: Reserved and should be set to 0 </summary>
         public fixed uint reserved1[58];
+
+        /// <summary> [in]: Reserved and should be set to NULL </summary>
         public fixed ulong reserved2[64];
 
         public static NV_ENC_CREATE_BITSTREAM_BUFFER Create()
@@ -1473,6 +2477,102 @@ internal static unsafe class NvEncodeAPI
             return new NV_ENC_CREATE_BITSTREAM_BUFFER
             {
                 version = StructVersion(1)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Structs needed for ME only mode.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_MVECTOR
+    {
+        /// <summary> the x component of MV in quarter-pel units </summary>
+        public short mvx;
+
+        /// <summary> the y component of MV in quarter-pel units </summary>
+        public short mvy;
+    }
+
+    /// <summary>
+    /// Motion vector structure per macroblock for H264 motion estimation.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_H264_MV_DATA
+    {
+        /// <summary> up to 4 vectors for 8x8 partition </summary>
+        public NV_ENC_MVECTOR mv0;
+        public NV_ENC_MVECTOR mv1;
+        public NV_ENC_MVECTOR mv2;
+        public NV_ENC_MVECTOR mv3;
+
+        /// <summary> 0 (I), 1 (P), 2 (IPCM), 3 (B) </summary>
+        public byte mbType;
+
+        /// <summary> up to 4 vectors for 8x8 partition </summary>
+        public byte partitionType;
+
+        /// <summary> Specifies the block partition type. 0:16x16, 1:8x8, 2:16x8, 3:8x16 </summary>
+        public ushort reserved;
+
+        /// <summary> reserved padding for alignment </summary>
+        public uint mbCost;
+    }
+
+    /// <summary>
+    /// Motion vector structure per CU for HEVC motion estimation.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_HEVC_MV_DATA
+    {
+        /// <summary> up to 4 vectors within a CU </summary>
+        public NV_ENC_MVECTOR mv0;
+        public NV_ENC_MVECTOR mv1;
+        public NV_ENC_MVECTOR mv2;
+        public NV_ENC_MVECTOR mv3;
+
+        /// <summary> 0 (I), 1(P) </summary>
+        public byte cuType;
+
+        /// <summary> 0: 8x8, 1: 16x16, 2: 32x32, 3: 64x64 </summary>
+        public byte cuSize;
+
+        /// <summary> The CU partition mode
+        /// 0 (2Nx2N), 1 (2NxN), 2(Nx2N), 3 (NxN),
+        /// 4 (2NxnU), 5 (2NxnD), 6(nLx2N), 7 (nRx2N) 
+        /// </summary>
+        public byte partitionMode;
+
+        /// <summary> Marker to separate CUs in the current CTB from CUs in the next CTB </summary>
+        public byte lastCUInCTB;
+    }
+
+    /// <summary>
+    /// Creation parameters for output motion vector buffer for ME only mode.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct NV_ENC_CREATE_MV_BUFFER
+    {
+        /// <summary> [in]: Struct version. Must be set to NV_ENC_CREATE_MV_BUFFER_VER </summary>
+        public uint version;
+
+        /// <summary> [in]: Reserved and should be set to 0 </summary>
+        public uint reserved;
+
+        /// <summary> [out]: Pointer to the output motion vector buffer </summary>
+        public void* mvBuffer;
+
+        /// <summary> [in]: Reserved and should be set to 0 </summary>
+        public fixed uint reserved1[254];
+
+        /// <summary> [in]: Reserved and should be set to NULL </summary>
+        public fixed ulong reserved2[63];
+
+        public static NV_ENC_CREATE_MV_BUFFER Create()
+        {
+            return new NV_ENC_CREATE_MV_BUFFER
+            {
+                version = StructVersion(2)
             };
         }
     }
