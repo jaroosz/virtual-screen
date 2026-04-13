@@ -11,10 +11,7 @@ public class AppController
 
     public bool IsRunning { get; private set; }
 
-    public AppController(
-        IDriverManager driverManager,
-        IScreenCapture screenCapture,
-        IStreamServer streamServer)
+    public AppController(IDriverManager driverManager, IScreenCapture screenCapture, IStreamServer streamServer)
     {
         _driverManager = driverManager;
         _screenCapture = screenCapture;
@@ -47,7 +44,6 @@ public class AppController
         // connect screen capture to server
         if (_streamServer is UdpStreamServer udpServer)
         {
-            Console.WriteLine("UDP stream active.");
             udpServer.SetScreenCapture(_screenCapture);
         }
 

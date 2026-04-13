@@ -149,7 +149,6 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
         if (result.output != IntPtr.Zero)
         {
             Marshal.Release(factoryPtr);
-            Console.WriteLine("Using NVIDIA adapter");
             return result;
         }
 
@@ -193,7 +192,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                     _ => $"Unknown (0x{adapterDesc.VendorId:X4})"
                 };
 
-                Console.WriteLine($"Adapter {adapterIndex}: {vendorName} (VendorID: 0x{adapterDesc.VendorId:X4})");
+                // Console.WriteLine($"Adapter {adapterIndex}: {vendorName} (VendorID: 0x{adapterDesc.VendorId:X4})");
 
                 // If we're filtering for NVIDIA and this isn't NVIDIA, skip it
                 if (preferNvidia && !isNvidia)
@@ -223,7 +222,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
                     if (name.Equals(monitorDeviceName, StringComparison.OrdinalIgnoreCase))
                     {
-                        Console.WriteLine($"Match found on {vendorName} adapter!");
+                        // Console.WriteLine($"Match found on {vendorName} adapter!");
                         return (outputPtr, adapterPtr);
                     }
 

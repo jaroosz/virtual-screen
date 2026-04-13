@@ -29,8 +29,6 @@ thread.SetApartmentState(ApartmentState.STA);
 thread.Start();
 thread.Join();
 
-Console.WriteLine("Press Ctrl+C to stop.");
-
 var tcs = new TaskCompletionSource();
 Console.CancelKeyPress += (_, e) =>
 {
