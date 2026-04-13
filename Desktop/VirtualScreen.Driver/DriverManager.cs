@@ -7,27 +7,19 @@ namespace VirtualScreen.Driver;
 public class DriverManager : IDriverManager
 {
     private readonly string _driverPath;
+    private const string DeviceInstanceId = "ROOT\\DISPLAY\\0000";
+    private const string HardwareId = "Root\\MttVDD";
 
     public DriverManager(string driverPath)
     {
         _driverPath = driverPath;
     }
 
+    // driver installation
     public bool IsDriverInstalled()
     {
         return GetAllDisplayDevices().Any(d =>
             d.DeviceID.Contains("MttVDD", StringComparison.OrdinalIgnoreCase));
-    }
-
-    public string? GetVirtualMonitorDeviceName()
-    {
-        var device = GetAllDisplayDevices()
-            .FirstOrDefault(d => d.DeviceID.Contains("MttVDD", StringComparison.OrdinalIgnoreCase));
-
-        if (device.DeviceName == null)
-            return null;
-
-        return device.DeviceName;
     }
 
     public bool InstallDriver()
@@ -69,6 +61,34 @@ public class DriverManager : IDriverManager
 
         result?.WaitForExit();
         return result?.ExitCode == 0;
+    }
+
+    // enable/disable driver
+    public bool IsDriverEnabled()
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool EnableDriver()
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool DisableDriver()
+    {
+        throw new NotImplementedException();
+    }
+
+    // monitor
+    public string? GetVirtualMonitorDeviceName()
+    {
+        var device = GetAllDisplayDevices()
+            .FirstOrDefault(d => d.DeviceID.Contains("MttVDD", StringComparison.OrdinalIgnoreCase));
+
+        if (device.DeviceName == null)
+            return null;
+
+        return device.DeviceName;
     }
 
     private List<NativeMethods.DISPLAY_DEVICE> GetAllDisplayDevices()

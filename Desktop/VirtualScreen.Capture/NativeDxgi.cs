@@ -86,7 +86,7 @@ internal static class NativeDxgi
         del(contextPtr, dst, src);
     }
 
-    public static byte[] ReadTextureBytes(IntPtr contextPtr, IntPtr stagingPtr, int width, int height)
+    public static byte[]? ReadTextureBytes(IntPtr contextPtr, IntPtr stagingPtr, int width, int height)
     {
         var vtable = Marshal.ReadIntPtr(contextPtr);
 

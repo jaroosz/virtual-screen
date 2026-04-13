@@ -5,22 +5,12 @@ namespace VirtualScreen.Capture;
 internal static class MonitorHelper
 {
     [DllImport("user32.dll")]
-    private static extern bool EnumDisplayMonitors(
-        IntPtr hdc,
-        IntPtr lprcClip,
-        MonitorEnumProc lpfnEnum,
-        IntPtr dwData);
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern bool GetMonitorInfo(
-        IntPtr hMonitor,
-        ref MONITORINFOEX lpmi);
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
-    private delegate bool MonitorEnumProc(
-        IntPtr hMonitor,
-        IntPtr hdcMonitor,
-        IntPtr lprcMonitor,
-        IntPtr dwData);
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct MONITORINFOEX
@@ -39,7 +29,13 @@ internal static class MonitorHelper
         public int left, top, right, bottom;
     }
 
-    public record MonitorInfo(string DeviceName, IntPtr HMonitor);
+    public record MonitorInfo(
+        string DeviceName, 
+        IntPtr HMonitor,
+        int X, int Y,
+        int Width, int Height,
+        bool IsPrimary
+    );
 
     public static List<MonitorInfo> GetMonitors()
     {
@@ -52,12 +48,19 @@ internal static class MonitorHelper
 
             if (GetMonitorInfo(hMonitor, ref info))
             {
-                Console.WriteLine($"EnumDisplayMonitors: {info.szDevice} | {hMonitor}");
-                result.Add(new MonitorInfo(info.szDevice, hMonitor));
+                result.Add(new MonitorInfo(
+                    DeviceName: info.szDevice,
+                    HMonitor: hMonitor,
+                    X: info.rcMonitor.left,
+                    Y: info.rcMonitor.top,
+                    Width: info.rcMonitor.right - info.rcMonitor.left,
+                    Height: info.rcMonitor.bottom - info.rcMonitor.top,
+                    IsPrimary: (info.dwFlags & 0x1) != 0
+                ));
             }
             else
             {
-                Console.WriteLine($"GetMonitorInfo failed for hMonitor: {hMonitor}");
+                Console.WriteLine($"GetMonitorInfo failed for: {hMonitor}");
             }
 
             return true;

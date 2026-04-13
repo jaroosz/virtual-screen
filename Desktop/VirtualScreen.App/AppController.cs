@@ -18,6 +18,31 @@ public class AppController
         _streamServer = streamServer;
     }
 
+    public async Task InitializeAsync()
+    {
+        throw new NotImplementedException();
+    }
+
+    public List<MonitorInfo> GetMonitors()
+    {
+        throw new NotImplementedException();
+    }
+
+    public void SelectMonitor(string monitorDeviceName)
+    {
+        throw new NotImplementedException();
+    }
+
+    public async Task AddVirtualMonitorAsync()
+    {
+        throw new NotImplementedException();
+    }
+
+    public void RemoveVirtualMonitor()
+    {
+        throw new NotImplementedException();
+    }
+
     public async Task StartAsync(int port)
     {
         if (IsRunning) return;
@@ -63,3 +88,11 @@ public class AppController
         IsRunning = false;
     }
 }
+
+public record MonitorInfo(
+                string DeviceName,      // monitor name
+                bool IsVirtual,         // is it MttVDD?
+                bool IsStreaming,       // is streaming?
+                int X, int Y,           // position on windows monitor layout
+                int Width, int Height   // resolution
+    );
