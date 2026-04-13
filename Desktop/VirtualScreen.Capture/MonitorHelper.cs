@@ -2,7 +2,7 @@
 
 namespace VirtualScreen.Capture;
 
-internal static class MonitorHelper
+public static class MonitorHelper
 {
     [DllImport("user32.dll")]
     private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);

@@ -8,7 +8,6 @@ public class DriverManager : IDriverManager
 {
     private readonly string _driverPath;
     private const string DeviceInstanceId = "ROOT\\DISPLAY\\0000";
-    private const string HardwareId = "Root\\MttVDD";
 
     public DriverManager(string driverPath)
     {
@@ -16,11 +15,8 @@ public class DriverManager : IDriverManager
     }
 
     // driver installation
-    public bool IsDriverInstalled()
-    {
-        return GetAllDisplayDevices().Any(d =>
-            d.DeviceID.Contains("MttVDD", StringComparison.OrdinalIgnoreCase));
-    }
+    public bool IsDriverInstalled() =>
+        GetVirtualDevice() != null;
 
     public bool InstallDriver()
     {
@@ -28,81 +24,54 @@ public class DriverManager : IDriverManager
         if (!File.Exists(infPath))
             return false;
 
-        var addDriver = Process.Start(new ProcessStartInfo
-        {
-            FileName = "pnputil.exe",
-            Arguments = $"/add-driver \"{infPath}\" /install",
-            UseShellExecute = false,
-            CreateNoWindow = true
-        });
-        addDriver?.WaitForExit();
-
-        var scan = Process.Start(new ProcessStartInfo
-        {
-            FileName = "pnputil.exe",
-            Arguments = "/scan-devices",
-            UseShellExecute = false,
-            CreateNoWindow = true
-        });
-        scan?.WaitForExit();
-
-        return addDriver?.ExitCode is 0 or 259;
+        var code = RunPnpUtil($"/add-driver \"{infPath}\" /install");
+        RunPnpUtil("/scan-devices");
+        return code is 0 or 259;
     }
 
-    public bool UninstallDriver()
-    {
-        var result = Process.Start(new ProcessStartInfo
-        {
-            FileName = "pnputil.exe",
-            Arguments = "/delete-driver MttVDD.inf /uninstall",
-            UseShellExecute = false,
-            CreateNoWindow = true
-        });
-
-        result?.WaitForExit();
-        return result?.ExitCode == 0;
-    }
+    public bool UninstallDriver() => RunPnpUtil("/delete-driver MttVDD.inf /uninstall") == 0;
 
     // enable/disable driver
-    public bool IsDriverEnabled()
-    {
-        throw new NotImplementedException();
-    }
+    public bool IsDriverEnabled() => GetVirtualDevice() is { } d && (d.StateFlags & 0x1) != 0;
 
-    public bool EnableDriver()
-    {
-        throw new NotImplementedException();
-    }
+    public bool EnableDriver() => RunPnpUtil($"/enable-device \"{DeviceInstanceId}\"") is 0 or 259;
 
-    public bool DisableDriver()
-    {
-        throw new NotImplementedException();
-    }
+    public bool DisableDriver() => RunPnpUtil($"/disable-device \"{DeviceInstanceId}\"") is 0 or 259;
 
     // monitor
-    public string? GetVirtualMonitorDeviceName()
+    public string? GetVirtualMonitorDeviceName() => GetVirtualDevice()?.DeviceName;
+
+    private NativeMethods.DISPLAY_DEVICE? GetVirtualDevice()
     {
-        var device = GetAllDisplayDevices()
-            .FirstOrDefault(d => d.DeviceID.Contains("MttVDD", StringComparison.OrdinalIgnoreCase));
-
-        if (device.DeviceName == null)
-            return null;
-
-        return device.DeviceName;
+        return GetAllDisplayDevices()
+            .Cast<NativeMethods.DISPLAY_DEVICE?>()
+            .FirstOrDefault(d => d!.Value.DeviceID.Contains("MttVDD", StringComparison.OrdinalIgnoreCase));
     }
 
     private List<NativeMethods.DISPLAY_DEVICE> GetAllDisplayDevices()
     {
         var result = new List<NativeMethods.DISPLAY_DEVICE>();
-        var device = new NativeMethods.DISPLAY_DEVICE();
-        device.cb = Marshal.SizeOf(device);
+        var device = new NativeMethods.DISPLAY_DEVICE { cb = Marshal.SizeOf<NativeMethods.DISPLAY_DEVICE>() };
 
-        uint i = 0;
-        while (NativeMethods.EnumDisplayDevices(null, i, ref device, 0))
+        for (uint i = 0; NativeMethods.EnumDisplayDevices(null, i, ref device, 0); i++)
         {
             result.Add(device);
-            i++;
+            device.cb = Marshal.SizeOf<NativeMethods.DISPLAY_DEVICE>();
         }
+
         return result;
+    }
+
+    private static int? RunPnpUtil(string arguments)
+    {
+        var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = "pnputil.exe",
+            Arguments = arguments,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        });
+        process?.WaitForExit();
+        return process?.ExitCode;
     }
 }

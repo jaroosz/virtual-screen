@@ -1,5 +1,6 @@
 ﻿using VirtualScreen.Core;
 using VirtualScreen.Streaming;
+using VirtualScreen.Capture;
 
 namespace VirtualScreen.App;
 
@@ -9,7 +10,9 @@ public class AppController
     private readonly IScreenCapture _screenCapture;
     private readonly IStreamServer _streamServer;
 
+    private string? _selectedMonitor;
     public bool IsRunning { get; private set; }
+    public string? SelectedMonitor => _selectedMonitor;
 
     public AppController(IDriverManager driverManager, IScreenCapture screenCapture, IStreamServer streamServer)
     {
@@ -20,62 +23,85 @@ public class AppController
 
     public async Task InitializeAsync()
     {
-        throw new NotImplementedException();
+        if (_driverManager.IsDriverInstalled()) return;
+
+        if (!_driverManager.InstallDriver())
+            throw new Exception("Cannot install driver.");
+
+        await Task.Delay(2000);
     }
 
     public List<MonitorInfo> GetMonitors()
     {
-        throw new NotImplementedException();
+        var virtualDeviceName = _driverManager.GetVirtualMonitorDeviceName();
+
+        return MonitorHelper.GetMonitors().Select(m => new MonitorInfo(
+            DeviceName: m.DeviceName,
+            IsVirtual: !string.IsNullOrEmpty(virtualDeviceName) &&
+                       string.Equals(m.DeviceName, virtualDeviceName, StringComparison.OrdinalIgnoreCase),
+            IsStreaming: IsRunning &&
+                         string.Equals(m.DeviceName, _selectedMonitor, StringComparison.OrdinalIgnoreCase),
+            X: m.X,
+            Y: m.Y,
+            Width: m.Width,
+            Height: m.Height
+        )).ToList();
     }
 
-    public void SelectMonitor(string monitorDeviceName)
-    {
-        throw new NotImplementedException();
-    }
+    public void SelectMonitor(string deviceName) =>
+        _selectedMonitor = deviceName;
 
     public async Task AddVirtualMonitorAsync()
     {
-        throw new NotImplementedException();
+        if (_driverManager.IsDriverInstalled() && _driverManager.IsDriverEnabled())
+        {
+            Console.WriteLine("Virtual monitor is enabled.");
+            return;
+        }
+
+        if (!_driverManager.IsDriverInstalled())
+        {
+            if (!_driverManager.InstallDriver())
+                throw new Exception("Cannot install driver.");
+
+            await Task.Delay(2000);
+            return;
+        }
+
+        _driverManager.EnableDriver();
     }
 
     public void RemoveVirtualMonitor()
     {
-        throw new NotImplementedException();
+        if (!_driverManager.IsDriverEnabled())
+            return;
+
+        var virtualDeviceName = _driverManager.GetVirtualMonitorDeviceName();
+
+        if (IsRunning &&
+            string.Equals(_selectedMonitor, virtualDeviceName, StringComparison.OrdinalIgnoreCase))
+        {
+            Stop();
+        }
+
+        _driverManager.DisableDriver();
     }
 
     public async Task StartAsync(int port)
     {
         if (IsRunning) return;
+        if (_selectedMonitor == null)
+            throw new InvalidOperationException("No monitor selected.");
 
-
-        // check if virtual driver is installed. Install if not
-        if (!_driverManager.IsDriverInstalled())
-        {
-            var installed = _driverManager.InstallDriver();
-            if (!installed)
-                throw new Exception("Cannot install driver.");
-
-            await Task.Delay(2000);
-        }
-
-        // find virtual monitor
-        var monitorName = _driverManager.GetVirtualMonitorDeviceName();
-        if (monitorName == null)
-            throw new Exception("Couldn't find virtual monitor.");
-
-        // start HTTP server
         _streamServer.Start(port);
 
-        // connect screen capture to server
         if (_streamServer is UdpStreamServer udpServer)
-        {
             udpServer.SetScreenCapture(_screenCapture);
-        }
 
-        // capture virtual monitor screen
-        _screenCapture.Start(monitorName);
-
+        _screenCapture.Start(_selectedMonitor);
         IsRunning = true;
+
+        await Task.CompletedTask;
     }
 
     public void Stop()
@@ -84,7 +110,6 @@ public class AppController
 
         _screenCapture.Stop();
         _streamServer.Stop();
-
         IsRunning = false;
     }
 }
