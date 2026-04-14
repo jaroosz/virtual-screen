@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace VirtualScreen.Core;
+namespace VirtualScreen.Core.Interface;
 
 public interface IScreenCapture
 {
@@ -12,9 +12,9 @@ public interface IScreenCapture
 
 public class TextureCapturedEventArgs : EventArgs
 {
-    public IntPtr TexturePtr { get; init; }
-    public IntPtr DevicePtr { get; init; }
-    public IntPtr ContextPtr { get; init; }
+    public nint TexturePtr { get; init; }
+    public nint DevicePtr { get; init; }
+    public nint ContextPtr { get; init; }
     public int Width { get; init; }
     public int Height { get; init; }
     public DateTime Timestamp { get; init; }

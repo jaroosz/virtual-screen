@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreenViewer.Core", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreen.Encoding", "VirtualScreen.Encoding\VirtualScreen.Encoding.csproj", "{1583011D-E4DD-4DCE-BF46-427D1ADF90D9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreen.ConsoleUI", "VirtualScreen.ConsoleUI\VirtualScreen.ConsoleUI.csproj", "{C2EE7FB1-FCB0-DFA9-A998-F9F678CB07D6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -51,6 +53,10 @@ Global
 		{1583011D-E4DD-4DCE-BF46-427D1ADF90D9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1583011D-E4DD-4DCE-BF46-427D1ADF90D9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1583011D-E4DD-4DCE-BF46-427D1ADF90D9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C2EE7FB1-FCB0-DFA9-A998-F9F678CB07D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C2EE7FB1-FCB0-DFA9-A998-F9F678CB07D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C2EE7FB1-FCB0-DFA9-A998-F9F678CB07D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C2EE7FB1-FCB0-DFA9-A998-F9F678CB07D6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

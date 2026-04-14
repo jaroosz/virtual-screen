@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace VirtualScreen.Capture;
+namespace VirtualScreen.Core;
 
 public static class MonitorHelper
 {
@@ -30,7 +30,7 @@ public static class MonitorHelper
     }
 
     public record MonitorInfo(
-        string DeviceName, 
+        string DeviceName,
         IntPtr HMonitor,
         int X, int Y,
         int Width, int Height,
@@ -43,8 +43,7 @@ public static class MonitorHelper
 
         EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (hMonitor, _, _, _) =>
         {
-            var info = new MONITORINFOEX();
-            info.cbSize = Marshal.SizeOf(info);
+            var info = new MONITORINFOEX { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
 
             if (GetMonitorInfo(hMonitor, ref info))
             {
@@ -57,10 +56,6 @@ public static class MonitorHelper
                     Height: info.rcMonitor.bottom - info.rcMonitor.top,
                     IsPrimary: (info.dwFlags & 0x1) != 0
                 ));
-            }
-            else
-            {
-                Console.WriteLine($"GetMonitorInfo failed for: {hMonitor}");
             }
 
             return true;

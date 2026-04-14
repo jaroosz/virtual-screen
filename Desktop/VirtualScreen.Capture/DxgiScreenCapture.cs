@@ -1,5 +1,5 @@
 ﻿using System.Runtime.InteropServices;
-using VirtualScreen.Core;
+using VirtualScreen.Core.Interface;
 
 namespace VirtualScreen.Capture;
 
@@ -41,7 +41,8 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
     private void CaptureLoop(string monitorDeviceName, CancellationToken token)
     {
-        var (dxgiOutputPtr, adapterPtr) = GetDxgiOutput(monitorDeviceName);
+        var normalized = NormalizeDeviceName(monitorDeviceName);
+        var (dxgiOutputPtr, adapterPtr) = GetDxgiOutput(normalized);
         if (dxgiOutputPtr == IntPtr.Zero)
             throw new Exception($"Cannot find DXGI output for: {monitorDeviceName}");
 
@@ -86,11 +87,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
         }
     }
 
-    private void RunFrameLoop(
-        IntPtr duplication,
-        IntPtr devicePtr,
-        IntPtr contextPtr,
-        CancellationToken token)
+    private void RunFrameLoop(IntPtr duplication, IntPtr devicePtr, IntPtr contextPtr, CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
@@ -139,7 +136,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
         }
     }
 
-    private static (IntPtr output, IntPtr adapter) GetDxgiOutput(string monitorDeviceName)
+    private static (IntPtr output, IntPtr adapter) GetDxgiOutput(string? monitorDeviceName)
     {
         var iidFactory = new Guid("770aae78-f26f-4dba-a829-253c83d1b387");
         var hr = NativeDxgi.CreateDXGIFactory1(ref iidFactory, out var factoryPtr);
@@ -152,7 +149,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
             return result;
         }
 
-        Console.WriteLine("NVIDIA adapter not found");
+        // try without preferring NVIDIA
         result = TryFindAdapterOutput(factoryPtr, monitorDeviceName, preferNvidia: false);
         Marshal.Release(factoryPtr);
 
@@ -161,7 +158,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
     private static (IntPtr output, IntPtr adapter) TryFindAdapterOutput(
     IntPtr factoryPtr,
-    string monitorDeviceName,
+    string? targetDeviceName,
     bool preferNvidia)
     {
         uint adapterIndex = 0;
@@ -184,17 +181,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
                 // VendorId: 0x10DE = NVIDIA, 0x8086 = Intel, 0x1002 = AMD
                 bool isNvidia = adapterDesc.VendorId == 0x10DE;
-                string vendorName = adapterDesc.VendorId switch
-                {
-                    0x10DE => "NVIDIA",
-                    0x8086 => "Intel",
-                    0x1002 => "AMD",
-                    _ => $"Unknown (0x{adapterDesc.VendorId:X4})"
-                };
 
-                // Console.WriteLine($"Adapter {adapterIndex}: {vendorName} (VendorID: 0x{adapterDesc.VendorId:X4})");
-
-                // If we're filtering for NVIDIA and this isn't NVIDIA, skip it
                 if (preferNvidia && !isNvidia)
                 {
                     Marshal.Release(adapterPtr);
@@ -218,11 +205,11 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                     getOutputDesc(outputPtr, out var outputDesc);
 
                     var name = new string(outputDesc.DeviceName).TrimEnd('\0');
-                    Console.WriteLine($"Output {outputIndex}: {name}");
 
-                    if (name.Equals(monitorDeviceName, StringComparison.OrdinalIgnoreCase))
+                    if (string.IsNullOrEmpty(targetDeviceName) ||
+                         name.Equals(targetDeviceName, StringComparison.OrdinalIgnoreCase) ||
+                         name.EndsWith(targetDeviceName, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Console.WriteLine($"Match found on {vendorName} adapter!");
                         return (outputPtr, adapterPtr);
                     }
 
@@ -242,6 +229,25 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
         }
 
         return (IntPtr.Zero, IntPtr.Zero);
+    }
+
+    private static string? NormalizeDeviceName(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return null;
+
+        var s = input.Trim();
+
+        if (int.TryParse(s, out var index) && index > 0)
+            return $@"\\.\DISPLAY{index}";
+
+        if (s.StartsWith("DISPLAY", StringComparison.OrdinalIgnoreCase))
+            return $@"\\.\{s.ToUpperInvariant()}";
+
+        if (s.StartsWith(@"\\.\DISPLAY", StringComparison.OrdinalIgnoreCase))
+            return s;
+
+        return s;
     }
 
     public void Dispose() => Stop();

@@ -3,6 +3,7 @@ using VirtualScreen.App;
 using VirtualScreen.Capture;
 using VirtualScreen.Driver;
 using VirtualScreen.Streaming;
+using VirtualScreen.ConsoleUI;
 
 [DllImport("user32.dll")]
 static extern bool SetProcessDpiAwarenessContext(int value);
@@ -21,20 +22,5 @@ var controller = new AppController(
     new DxgiScreenCapture(),
     new UdpStreamServer());
 
-var thread = new Thread(() =>
-{
-    controller.StartAsync(port).GetAwaiter().GetResult();
-});
-thread.SetApartmentState(ApartmentState.STA);
-thread.Start();
-thread.Join();
-
-var tcs = new TaskCompletionSource();
-Console.CancelKeyPress += (_, e) =>
-{
-    e.Cancel = true;
-    tcs.SetResult();
-};
-
-await tcs.Task;
-controller.Stop();
+var menu = new ConsoleMenu(controller, port);
+await menu.RunAsync();

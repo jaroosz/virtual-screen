@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace VirtualScreen.Core;
+namespace VirtualScreen.Core.Interface;
 
 public interface IDriverManager
 {

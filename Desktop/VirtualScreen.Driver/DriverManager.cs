@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-using VirtualScreen.Core;
+using System.Text;
+using VirtualScreen.Core.Interface;
 
 namespace VirtualScreen.Driver;
 
@@ -8,6 +9,7 @@ public class DriverManager : IDriverManager
 {
     private readonly string _driverPath;
     private const string DeviceInstanceId = "ROOT\\DISPLAY\\0000";
+    private const string DriverInfName = "MttVDD.inf";
 
     public DriverManager(string driverPath)
     {
@@ -15,8 +17,20 @@ public class DriverManager : IDriverManager
     }
 
     // driver installation
-    public bool IsDriverInstalled() =>
-        GetVirtualDevice() != null;
+    public bool IsDriverInstalled()
+    {
+        var (code, output) = RunPnpUtilWithOutput("/enum-drivers");
+        if (code != null)
+        {
+            if (!string.IsNullOrEmpty(output) &&
+                output.Contains(DriverInfName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            return GetVirtualDevice() != null;
+        }
+        return GetVirtualDevice() != null;
+    }
 
     public bool InstallDriver()
     {
@@ -34,7 +48,8 @@ public class DriverManager : IDriverManager
     // enable/disable driver
     public bool IsDriverEnabled() => GetVirtualDevice() is { } d && (d.StateFlags & 0x1) != 0;
 
-    public bool EnableDriver() => RunPnpUtil($"/enable-device \"{DeviceInstanceId}\"") is 0 or 259;
+    public bool EnableDriver() => 
+        RunPnpUtil($"/enable-device \"{DeviceInstanceId}\"") is 0 or 259;
 
     public bool DisableDriver() => RunPnpUtil($"/disable-device \"{DeviceInstanceId}\"") is 0 or 259;
 
@@ -73,5 +88,37 @@ public class DriverManager : IDriverManager
         });
         process?.WaitForExit();
         return process?.ExitCode;
+    }
+
+    private static (int? ExitCode, string Output) RunPnpUtilWithOutput(string arguments)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "pnputil.exe",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null) return (null, string.Empty);
+
+            var output = new StringBuilder();
+            output.Append(process.StandardOutput.ReadToEnd());
+            output.AppendLine(process.StandardError.ReadToEnd());
+
+            process.WaitForExit();
+            return (process.ExitCode, output.ToString());
+        }
+        catch
+        {
+            return (null, string.Empty);
+        }
     }
 }

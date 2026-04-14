@@ -1,7 +1,7 @@
 ﻿using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
-using VirtualScreen.Core;
+using VirtualScreen.Core.Interface;
 using VirtualScreen.Encoding;
 using VirtualScreenViewer.Core.Protocol;
 
