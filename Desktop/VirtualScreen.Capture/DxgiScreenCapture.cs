@@ -101,6 +101,12 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
             try
             {
+                if (frameInfo.AccumulatedFrames == 0 || frameInfo.LastPresentTime == 0)
+                    continue;
+
+                if (desktopResource == IntPtr.Zero)
+                    continue;
+
                 var iidTex = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
                 Marshal.QueryInterface(desktopResource, ref iidTex, out var texturePtr);
                 Marshal.Release(desktopResource);
@@ -111,18 +117,15 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                 {
                     NativeDxgi.GetTextureDesc(texturePtr, out var width, out var height);
 
-                    if (TextureCaptured != null && TextureCaptured.GetInvocationList().Length > 0)
+                    TextureCaptured?.Invoke(this, new TextureCapturedEventArgs
                     {
-                        TextureCaptured.Invoke(this, new TextureCapturedEventArgs
-                        {
-                            TexturePtr = texturePtr,
-                            DevicePtr = devicePtr,
-                            ContextPtr = contextPtr,
-                            Width = width,
-                            Height = height,
-                            Timestamp = DateTime.UtcNow
-                        });
-                    }
+                        TexturePtr = texturePtr,
+                        DevicePtr = devicePtr,
+                        ContextPtr = contextPtr,
+                        Width = width,
+                        Height = height,
+                        Timestamp = DateTime.UtcNow
+                    });
                 }
                 finally
                 {
