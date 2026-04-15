@@ -1,4 +1,4 @@
-﻿namespace VirtualScreenViewer.Core.Protocol;
+﻿namespace VirtualScreen.Core.Protocol;
 
 public enum PacketType : byte
 {

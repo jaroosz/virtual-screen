@@ -13,8 +13,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreen.Streaming", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreen.App", "VirtualScreen.App\VirtualScreen.App.csproj", "{C6D7DA26-F453-4948-AF90-E9A8E447433F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreenViewer.Core", "..\Mobile\VirtualScreenViewer.Core\VirtualScreenViewer.Core.csproj", "{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreen.Encoding", "VirtualScreen.Encoding\VirtualScreen.Encoding.csproj", "{1583011D-E4DD-4DCE-BF46-427D1ADF90D9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualScreen.ConsoleUI", "VirtualScreen.ConsoleUI\VirtualScreen.ConsoleUI.csproj", "{C2EE7FB1-FCB0-DFA9-A998-F9F678CB07D6}"
@@ -45,10 +43,6 @@ Global
 		{C6D7DA26-F453-4948-AF90-E9A8E447433F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C6D7DA26-F453-4948-AF90-E9A8E447433F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C6D7DA26-F453-4948-AF90-E9A8E447433F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{BFA3BDE8-BE35-967D-3D87-CC37BE0B2337}.Release|Any CPU.Build.0 = Release|Any CPU
 		{1583011D-E4DD-4DCE-BF46-427D1ADF90D9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{1583011D-E4DD-4DCE-BF46-427D1ADF90D9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1583011D-E4DD-4DCE-BF46-427D1ADF90D9}.Release|Any CPU.ActiveCfg = Release|Any CPU

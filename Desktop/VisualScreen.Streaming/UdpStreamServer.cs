@@ -2,8 +2,8 @@
 using System.Net;
 using System.Net.Sockets;
 using VirtualScreen.Core.Interface;
+using VirtualScreen.Core.Protocol;
 using VirtualScreen.Encoding;
-using VirtualScreenViewer.Core.Protocol;
 
 namespace VirtualScreen.Streaming;
 

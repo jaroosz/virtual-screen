@@ -141,7 +141,7 @@ public class ConsoleMenu
         };
         Console.WriteLine(e.Message);
         Console.ResetColor();
-        Thread.Sleep(1000);
+        Thread.Sleep(500);
     }
 
     private static void WriteLine(string text) =>
