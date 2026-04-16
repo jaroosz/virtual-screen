@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
+using VirtualScreen.Core;
 using VirtualScreen.Core.Interface;
 using VirtualScreen.Core.Protocol;
 using VirtualScreen.Encoding;
@@ -14,6 +15,8 @@ public class UdpStreamServer : IStreamServer
     private Task? _listenerTask;
     private IPEndPoint? _clientEndpoint;
     private uint _sequenceNumber;
+    private int _monitorX;
+    private int _monitorY;
 
     private NvencH265Encoder? _encoder;
     private IScreenCapture? _screenCapture;
@@ -58,9 +61,11 @@ public class UdpStreamServer : IStreamServer
         IsRunning = false;
     }
 
-    public void SetScreenCapture(IScreenCapture screenCapture)
+    public void SetScreenCapture(IScreenCapture screenCapture, int monitorX = 0, int monitorY = 0)
     {
         _screenCapture = screenCapture;
+        _monitorX = monitorX;
+        _monitorY = monitorY;
         _screenCapture.TextureCaptured += OnTextureCaptured;
     }
 
@@ -85,7 +90,8 @@ public class UdpStreamServer : IStreamServer
 
             try
             {
-                SendH265Frame(buffer, length, e.Width, e.Height, frameNumber);
+                var (cx, cy, cursorType) = MonitorHelper.GetCursorInfo(_monitorX, _monitorY, e.Width, e.Height);
+                SendH265Frame(buffer, length, e.Width, e.Height, frameNumber, cx, cy, cursorType);
             }
             finally
             {
@@ -98,7 +104,14 @@ public class UdpStreamServer : IStreamServer
         }
     }
 
-    private void SendH265Frame(byte[] h265Data, int length, int width, int height, uint frameNumber = 0)
+    private void SendH265Frame(
+        byte[] h265Data, 
+        int length, 
+        int width, int height, 
+        uint frameNumber, 
+        short cursorX, 
+        short cursorY,
+        CursorType cursorType)
     {
         var totalFragments = (ushort)Math.Ceiling((double)length / MaxUdpPayload);
         var seqNum = _sequenceNumber++;
@@ -117,7 +130,9 @@ public class UdpStreamServer : IStreamServer
                 height,
                 i,
                 totalFragments,
-                frameNumber
+                frameNumber,
+                cursorX, cursorY,
+                cursorType
             );
 
             _udpServer!.Send(packet, packet.Length, _clientEndpoint!);
@@ -132,7 +147,9 @@ public class UdpStreamServer : IStreamServer
     int height,
     ushort fragmentIndex,
     ushort totalFragments,
-    uint frameNumber = 0)
+    uint frameNumber,
+    short cursorX, short cursorY,
+    CursorType cursorType)
     {
         var packetSize = 50 + payload.Length;
         var packet = ArrayPool<byte>.Shared.Rent(packetSize);
@@ -171,6 +188,17 @@ public class UdpStreamServer : IStreamServer
             // 4 bytes
             BitConverter.TryWriteBytes(span.Slice(offset, 4), frameNumber);
             offset += 4;
+
+            // 2 bytes
+            BitConverter.TryWriteBytes(span.Slice(offset, 2), cursorX);
+            offset += 2;
+
+            // 2 bytes
+            BitConverter.TryWriteBytes(span.Slice(offset, 2), cursorY);
+            offset += 2;
+
+            // cursor type
+            span[offset] = (byte)cursorType;
 
             // padding
             offset = 50;

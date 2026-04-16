@@ -131,8 +131,11 @@ public class AppController
 
         _streamServer.Start(port);
 
+        var monitor = MonitorHelper.GetMonitors()
+            .FirstOrDefault(m => m.DeviceName == _selectedMonitor);
+
         if (_streamServer is UdpStreamServer udpServer)
-            udpServer.SetScreenCapture(_screenCapture);
+            udpServer.SetScreenCapture(_screenCapture, monitor?.X ?? 0, monitor?.Y ?? 0);
 
         _screenCapture.Start(_selectedMonitor);
         IsRunning = true;

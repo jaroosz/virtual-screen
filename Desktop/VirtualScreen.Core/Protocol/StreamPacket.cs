@@ -9,6 +9,20 @@ public enum PacketType : byte
     Heartbeat = 5
 }
 
+public enum CursorType : byte
+{
+    Hidden = 0,
+    Arrow = 1,
+    IBeam = 2,
+    Hand = 3,
+    Wait = 4,
+    ResizeNS = 5,
+    ResizeEW = 6,
+    ResizeNWSE = 7,
+    ResizeNESW = 8,
+    Cross = 9
+}
+
 public class StreamPacket
 {
     private const int MaxUdpSize = 60000;
@@ -19,10 +33,12 @@ public class StreamPacket
     public long Timestamp { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
-
     public ushort FragmentIndex { get; set; }
     public ushort TotalFragments { get; set; }
     public uint FrameNumber { get; set; }
+    public short CursorX { get; set; }
+    public short CursorY { get; set; }
+    public CursorType CursorType { get; set; }
     public byte[] Payload { get; set; } = Array.Empty<byte>();
 
     // Header layout (50 bytes):
@@ -34,7 +50,10 @@ public class StreamPacket
     // [21-22]  FragmentIndex (2)
     // [23-24]  TotalFragments(2)
     // [25-28]  FrameNumber   (4)
-    // [29-49]  padding       (21)
+    // [29-30]  CursorX        (2)
+    // [31-32]  CursorY        (2)
+    // [33]     CursorType     (1)
+    // [34-49]  padding        (16)
 
     // serialize to byte array for UDP
     public byte[] ToBytes()
@@ -50,6 +69,9 @@ public class StreamPacket
         writer.Write(FragmentIndex);
         writer.Write(TotalFragments);
         writer.Write(FrameNumber);
+        writer.Write(CursorX);
+        writer.Write(CursorY);
+        writer.Write((byte)CursorType);
 
         var paddingNeeded = HeaderSize - (int)ms.Position;
         if (paddingNeeded > 0)
@@ -80,7 +102,10 @@ public class StreamPacket
                 Height = reader.ReadInt32(),
                 FragmentIndex = reader.ReadUInt16(),
                 TotalFragments = reader.ReadUInt16(),
-                FrameNumber = reader.ReadUInt32()
+                FrameNumber = reader.ReadUInt32(),
+                CursorX = reader.ReadInt16(),
+                CursorY = reader.ReadInt16(),
+                CursorType = (CursorType)reader.ReadByte()
             };
 
             ms.Seek(HeaderSize, SeekOrigin.Begin);
