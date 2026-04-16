@@ -250,15 +250,6 @@ public unsafe class NvencH265Encoder : IDisposable
             var encodedSize = (int)lockParams.bitstreamSizeInBytes;
 
             _encodedFrameCount++;
-            //var frameType = lockParams.pictureType == NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_IDR ? "IDR" :
-            //               lockParams.pictureType == NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_I ? "I" : "P";
-
-            //if (_encodedFrameCount % 30 == 0 || frameType == "IDR")
-            //{
-            //    Console.WriteLine(
-            //        $"Frame #{_encodedFrameCount} ({frameType}): {encodedSize:N0} bytes"
-            //    );
-            //}
 
             var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(encodedSize);
             Marshal.Copy((IntPtr)lockParams.bitstreamBufferPtr, buffer, 0, encodedSize);

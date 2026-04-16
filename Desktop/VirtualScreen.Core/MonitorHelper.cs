@@ -15,6 +15,29 @@ public static class MonitorHelper
     private static readonly IntPtr IDC_SIZENESW = new(32643);
     private static readonly IntPtr IDC_HAND = new(32649);
 
+    private static readonly IntPtr SYS_ARROW;
+    private static readonly IntPtr SYS_IBEAM;
+    private static readonly IntPtr SYS_WAIT;
+    private static readonly IntPtr SYS_CROSS;
+    private static readonly IntPtr SYS_SIZENS;
+    private static readonly IntPtr SYS_SIZEWE;
+    private static readonly IntPtr SYS_SIZENWSE;
+    private static readonly IntPtr SYS_SIZENESW;
+    private static readonly IntPtr SYS_HAND;
+
+    static MonitorHelper()
+    {
+        SYS_ARROW = LoadCursor(IntPtr.Zero, IDC_ARROW);
+        SYS_IBEAM = LoadCursor(IntPtr.Zero, IDC_IBEAM);
+        SYS_WAIT = LoadCursor(IntPtr.Zero, IDC_WAIT);
+        SYS_CROSS = LoadCursor(IntPtr.Zero, IDC_CROSS);
+        SYS_SIZENS = LoadCursor(IntPtr.Zero, IDC_SIZENS);
+        SYS_SIZEWE = LoadCursor(IntPtr.Zero, IDC_SIZEWE);
+        SYS_SIZENWSE = LoadCursor(IntPtr.Zero, IDC_SIZENWSE);
+        SYS_SIZENESW = LoadCursor(IntPtr.Zero, IDC_SIZENESW);
+        SYS_HAND = LoadCursor(IntPtr.Zero, IDC_HAND);
+    }
+
     [DllImport("user32.dll")]
     private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
 
@@ -30,6 +53,9 @@ public static class MonitorHelper
 
     [DllImport("user32.dll")]
     private static extern bool GetCursorInfo(ref CURSORINFO pci);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr LoadCursor(IntPtr hInstance, IntPtr lpCursorName);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct CURSORINFO
@@ -106,20 +132,20 @@ public static class MonitorHelper
         var ci = new CURSORINFO { cbSize = Marshal.SizeOf<CURSORINFO>() };
         GetCursorInfo(ref ci);
 
-        if (ci.flags == 0)
+        if ((ci.flags & 1u) == 0)
             return (x, y, CursorType.Hidden);
 
-        var type = ci.hCursor.ToInt64() switch
+        var type = ci.hCursor switch
         {
-            32512 => CursorType.Arrow,
-            32513 => CursorType.IBeam,
-            32514 => CursorType.Wait,
-            32515 => CursorType.Cross,
-            32645 => CursorType.ResizeNS,
-            32644 => CursorType.ResizeEW,
-            32642 => CursorType.ResizeNWSE,
-            32643 => CursorType.ResizeNESW,
-            32649 => CursorType.Hand,
+            var h when h == SYS_ARROW => CursorType.Arrow,
+            var h when h == SYS_IBEAM => CursorType.IBeam,
+            var h when h == SYS_WAIT => CursorType.Wait,
+            var h when h == SYS_CROSS => CursorType.Cross,
+            var h when h == SYS_SIZENS => CursorType.ResizeNS,
+            var h when h == SYS_SIZEWE => CursorType.ResizeEW,
+            var h when h == SYS_SIZENWSE => CursorType.ResizeNWSE,
+            var h when h == SYS_SIZENESW => CursorType.ResizeNESW,
+            var h when h == SYS_HAND => CursorType.Hand,
             _ => CursorType.Arrow
         };
 

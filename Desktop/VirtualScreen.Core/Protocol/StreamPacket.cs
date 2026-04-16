@@ -6,7 +6,8 @@ public enum PacketType : byte
     VideoFrameFragment = 2,
     ConnectionRequest = 3,
     ConnectionResponse = 4,
-    Heartbeat = 5
+    Heartbeat = 5,
+    CursorUpdate = 6
 }
 
 public enum CursorType : byte
@@ -159,5 +160,31 @@ public class StreamPacket
         }
 
         return fragments;
+    }
+
+    public static StreamPacket CreateCursorPacket(
+        uint sequenceNumber,
+        short cursorX,
+        short cursorY,
+        CursorType cursorType,
+        int width = 0,
+        int height = 0,
+        uint frameNumber = 0)
+    {
+        return new StreamPacket
+        {
+            Type = PacketType.CursorUpdate,
+            SequenceNumber = sequenceNumber,
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Width = width,
+            Height = height,
+            FragmentIndex = 0,
+            TotalFragments = 1,
+            FrameNumber = frameNumber,
+            CursorX = cursorX,
+            CursorY = cursorY,
+            CursorType = cursorType,
+            Payload = Array.Empty<byte>()
+        };
     }
 }
