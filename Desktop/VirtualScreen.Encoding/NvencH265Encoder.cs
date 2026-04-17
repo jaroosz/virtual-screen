@@ -87,11 +87,11 @@ public unsafe class NvencH265Encoder : IDisposable
 
             var config = presetConfig.presetCfg;
 
-            config.gopLength = 30;
+            config.gopLength = 60;
             config.frameIntervalP = 1;
 
             // HEVC specific configuration
-            config.encodeCodecConfig.hevcConfig.idrPeriod = 30;
+            config.encodeCodecConfig.hevcConfig.idrPeriod = 60;
             config.encodeCodecConfig.hevcConfig.repeatSPSPPS = 1;
             config.encodeCodecConfig.hevcConfig.outputAUD = 1;
             config.encodeCodecConfig.hevcConfig.enableLTR = 0;

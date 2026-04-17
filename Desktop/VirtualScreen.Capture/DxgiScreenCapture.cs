@@ -101,7 +101,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
     private void RunFrameLoop(IntPtr duplication, IntPtr devicePtr, IntPtr contextPtr, CancellationToken token)
     {
         var sw = Stopwatch.StartNew();
-        int frames = 0;
+        // int frames = 0;
         long ticksPerMs = Stopwatch.Frequency / 1200L;
         long frameIntervalTicks = (long)(TargetFrameMs * ticksPerMs);
 
@@ -137,14 +137,14 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
                 _lastEmitTick = now;
 
-                frames++;
-                var elapsedMs = sw.ElapsedMilliseconds;
-                if (elapsedMs >= 1000)
-                {
-                    Console.WriteLine($"[Capture] FPS: {frames / (elapsedMs / 1000.0):F1}");
-                    frames = 0;
-                    sw.Restart();
-                }
+                //frames++;
+                //var elapsedMs = sw.ElapsedMilliseconds;
+                //if (elapsedMs >= 1000)
+                //{
+                //    Console.WriteLine($"[Capture] FPS: {frames / (elapsedMs / 1000.0):F1}");
+                //    frames = 0;
+                //    sw.Restart();
+                //}
 
                 if (desktopResource == IntPtr.Zero)
                 {
