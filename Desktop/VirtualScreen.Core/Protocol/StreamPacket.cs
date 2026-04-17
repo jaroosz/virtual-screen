@@ -3,11 +3,9 @@
 public enum PacketType : byte
 {
     VideoFrame = 1,
-    VideoFrameFragment = 2,
     ConnectionRequest = 3,
     ConnectionResponse = 4,
-    Heartbeat = 5,
-    CursorUpdate = 6
+    Heartbeat = 5
 }
 
 public enum CursorType : byte
@@ -26,7 +24,6 @@ public enum CursorType : byte
 
 public class StreamPacket
 {
-    private const int MaxUdpSize = 60000;
     private const int HeaderSize = 50;
 
     public PacketType Type { get; set; }
@@ -43,20 +40,19 @@ public class StreamPacket
     public byte[] Payload { get; set; } = Array.Empty<byte>();
 
     // Header layout (50 bytes):
-    // [0]      Type          (1)
-    // [1-4]    SequenceNumber(4)
-    // [5-12]   Timestamp     (8)
-    // [13-16]  Width         (4)
-    // [17-20]  Height        (4)
-    // [21-22]  FragmentIndex (2)
-    // [23-24]  TotalFragments(2)
-    // [25-28]  FrameNumber   (4)
+    // [0]      Type           (1)
+    // [1-4]    SequenceNumber (4)
+    // [5-12]   Timestamp      (8)
+    // [13-16]  Width          (4)
+    // [17-20]  Height         (4)
+    // [21-22]  FragmentIndex  (2)
+    // [23-24]  TotalFragments (2)
+    // [25-28]  FrameNumber    (4)
     // [29-30]  CursorX        (2)
     // [31-32]  CursorY        (2)
     // [33]     CursorType     (1)
     // [34-49]  padding        (16)
 
-    // serialize to byte array for UDP
     public byte[] ToBytes()
     {
         using var ms = new MemoryStream();
@@ -76,9 +72,7 @@ public class StreamPacket
 
         var paddingNeeded = HeaderSize - (int)ms.Position;
         if (paddingNeeded > 0)
-        {
             writer.Write(new byte[paddingNeeded]);
-        }
 
         writer.Write(Payload);
         return ms.ToArray();
@@ -86,8 +80,7 @@ public class StreamPacket
 
     public static StreamPacket? FromBytes(byte[] data)
     {
-        if (data.Length < HeaderSize)
-            return null;
+        if (data.Length < HeaderSize) return null;
 
         try
         {
@@ -113,9 +106,7 @@ public class StreamPacket
 
             var payloadSize = data.Length - HeaderSize;
             if (payloadSize > 0)
-            {
                 packet.Payload = reader.ReadBytes(payloadSize);
-            }
 
             return packet;
         }
@@ -124,67 +115,5 @@ public class StreamPacket
             System.Diagnostics.Debug.WriteLine($"Packet parse error: {ex.Message}");
             return null;
         }
-    }
-
-    public static List<StreamPacket> CreateFragments(
-        byte[] imageData,
-        int width,
-        int height,
-        uint sequenceNumber,
-        uint frameNumber = 0)
-    {
-        const int maxPayloadSize = MaxUdpSize - HeaderSize;
-        var fragments = new List<StreamPacket>();
-        var totalFragments = (ushort)Math.Ceiling((double)imageData.Length / maxPayloadSize);
-        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        for (ushort i = 0; i < totalFragments; i++)
-        {
-            var offset = i * maxPayloadSize;
-            var length = Math.Min(maxPayloadSize, imageData.Length - offset);
-            var payload = new byte[length];
-            Array.Copy(imageData, offset, payload, 0, length);
-
-            fragments.Add(new StreamPacket
-            {
-                Type = totalFragments > 1 ? PacketType.VideoFrameFragment : PacketType.VideoFrame,
-                SequenceNumber = sequenceNumber,
-                Timestamp = ts,
-                Width = width,
-                Height = height,
-                FragmentIndex = i,
-                TotalFragments = totalFragments,
-                FrameNumber = frameNumber,
-                Payload = payload
-            });
-        }
-
-        return fragments;
-    }
-
-    public static StreamPacket CreateCursorPacket(
-        uint sequenceNumber,
-        short cursorX,
-        short cursorY,
-        CursorType cursorType,
-        int width = 0,
-        int height = 0,
-        uint frameNumber = 0)
-    {
-        return new StreamPacket
-        {
-            Type = PacketType.CursorUpdate,
-            SequenceNumber = sequenceNumber,
-            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            Width = width,
-            Height = height,
-            FragmentIndex = 0,
-            TotalFragments = 1,
-            FrameNumber = frameNumber,
-            CursorX = cursorX,
-            CursorY = cursorY,
-            CursorType = cursorType,
-            Payload = Array.Empty<byte>()
-        };
     }
 }

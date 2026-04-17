@@ -214,18 +214,14 @@ public unsafe class NvencH265Encoder : IDisposable
             picParams.completionEvent = null;
             picParams.pictureStruct = NV_ENC_PIC_STRUCT.NV_ENC_PIC_STRUCT_FRAME;
 
-            if (_frameIndex == 0 || _forceNextIDR || (_frameIndex % 30) == 0)
+            if (_frameIndex == 0 || _forceNextIDR)
             {
                 picParams.pictureType = NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_IDR;
                 _forceNextIDR = false;
             }
-            else
-            {
-                // Don't set pictureType - let encoder decide
-            }
 
             picParams.frameIdx = _frameIndex;
-            picParams.inputTimeStamp = _frameIndex;
+            picParams.inputTimeStamp = (ulong)DateTime.UtcNow.Ticks;
             _frameIndex++;
 
             var encodePicture = Marshal.GetDelegateForFunctionPointer<NvEncEncodePicture>(

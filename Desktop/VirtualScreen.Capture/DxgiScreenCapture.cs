@@ -1,4 +1,5 @@
 ﻿using System.Runtime.InteropServices;
+using System.Diagnostics;
 using VirtualScreen.Core.Interface;
 
 namespace VirtualScreen.Capture;
@@ -7,13 +8,20 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 {
     private Thread? _captureThread;
     private CancellationTokenSource? _cts;
-
+ 
     public bool IsCapturing { get; private set; }
-
+ 
     public event EventHandler<TextureCapturedEventArgs>? TextureCaptured;
-    public event EventHandler<CursorMovedEventArgs>? CursorMoved;
-
+ 
+    private const double TargetFrameMs = 1000.0 / 60.0;
+ 
     private long _lastMouseUpdateTime;
+    private long _lastEmitTick;
+ 
+    private bool _pendingCursorChanged;
+    private int _pendingCursorX;
+    private int _pendingCursorY;
+    private bool _pendingCursorVisible;
 
     public void Start(string monitorDeviceName)
     {
@@ -92,11 +100,16 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
     private void RunFrameLoop(IntPtr duplication, IntPtr devicePtr, IntPtr contextPtr, CancellationToken token)
     {
+        var sw = Stopwatch.StartNew();
+        int frames = 0;
+        long ticksPerMs = Stopwatch.Frequency / 1200L;
+        long frameIntervalTicks = (long)(TargetFrameMs * ticksPerMs);
+
         while (!token.IsCancellationRequested)
         {
             var hr = NativeDxgi.AcquireNextFrame(duplication, 100, out var frameInfo, out var desktopResource);
 
-            if (hr == unchecked((int)0x887A0027)) // DXGI_ERROR_WAIT_TIMEOUT
+            if (hr == unchecked((int)0x887A0027))
                 continue;
 
             if (hr != 0)
@@ -104,31 +117,56 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
             try
             {
-                try
+                if (frameInfo.LastMouseUpdateTime != _lastMouseUpdateTime)
                 {
-                    if (frameInfo.LastMouseUpdateTime != _lastMouseUpdateTime)
-                    {
-                        _lastMouseUpdateTime = frameInfo.LastMouseUpdateTime;
-
-                        var pos = frameInfo.PointerPosition;
-                        CursorMoved?.Invoke(this, new CursorMovedEventArgs
-                        {
-                            X = pos.X,
-                            Y = pos.Y,
-                            Visible = pos.Visible,
-                            Timestamp = DateTime.UtcNow
-                        });
-                    }
+                    _lastMouseUpdateTime = frameInfo.LastMouseUpdateTime;
+                    var pos = frameInfo.PointerPosition;
+                    _pendingCursorChanged = true;
+                    _pendingCursorX = pos.X;
+                    _pendingCursorY = pos.Y;
+                    _pendingCursorVisible = pos.Visible;
                 }
-                catch
+
+                var now = Stopwatch.GetTimestamp();
+                if (now - _lastEmitTick < frameIntervalTicks)
                 {
-                    // swallow pointer-event errors so texture processing continues
+                    if (desktopResource != IntPtr.Zero)
+                        Marshal.Release(desktopResource);
+                    continue;
+                }
+
+                _lastEmitTick = now;
+
+                frames++;
+                var elapsedMs = sw.ElapsedMilliseconds;
+                if (elapsedMs >= 1000)
+                {
+                    Console.WriteLine($"[Capture] FPS: {frames / (elapsedMs / 1000.0):F1}");
+                    frames = 0;
+                    sw.Restart();
                 }
 
                 if (desktopResource == IntPtr.Zero)
-                    continue;
+                {
+                    if (!_pendingCursorChanged) continue;
 
-                // texture present — process as before
+                    TextureCaptured?.Invoke(this, new TextureCapturedEventArgs
+                    {
+                        TexturePtr = 0,
+                        DevicePtr = devicePtr,
+                        ContextPtr = contextPtr,
+                        Width = 0,
+                        Height = 0,
+                        CursorMoved = true,
+                        CursorX = _pendingCursorX,
+                        CursorY = _pendingCursorY,
+                        CursorVisible = _pendingCursorVisible,
+                        Timestamp = DateTime.UtcNow
+                    });
+                    _pendingCursorChanged = false;
+                    continue;
+                }
+
                 var iidTex = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
                 Marshal.QueryInterface(desktopResource, ref iidTex, out var texturePtr);
                 Marshal.Release(desktopResource);
@@ -146,8 +184,13 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                         ContextPtr = contextPtr,
                         Width = width,
                         Height = height,
+                        CursorMoved = _pendingCursorChanged,
+                        CursorX = _pendingCursorX,
+                        CursorY = _pendingCursorY,
+                        CursorVisible = _pendingCursorVisible,
                         Timestamp = DateTime.UtcNow
                     });
+                    _pendingCursorChanged = false;
                 }
                 finally
                 {

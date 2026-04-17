@@ -1,6 +1,8 @@
 ﻿using System.Buffers;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Channels;
 using VirtualScreen.Core;
 using VirtualScreen.Core.Interface;
 using VirtualScreen.Core.Protocol;
@@ -13,18 +15,26 @@ public class UdpStreamServer : IStreamServer
     private UdpClient? _udpServer;
     private CancellationTokenSource? _cts;
     private Task? _listenerTask;
+    private Task? _senderTask;
     private IPEndPoint? _clientEndpoint;
-    private uint _sequenceNumber;
     private int _monitorX;
     private int _monitorY;
 
     private NvencH265Encoder? _encoder;
     private IScreenCapture? _screenCapture;
 
+    private Channel<byte[]>? _sendChannel;
+
+    private uint _sequenceNumber;
     private int _lastWidth;
     private int _lastHeight;
 
-    private const int MaxUdpPayload = 1400; // MTU 1500 - 100 bytes
+    private const int MaxUdpPayload = 1400;
+    private const int Bitrate = 15_000_000;
+    private const int HeaderSize = 50;
+
+    private static readonly long PacingIntervalTicks =
+        (long)(Stopwatch.Frequency * (MaxUdpPayload * 8.0 / Bitrate) * 0.4);
 
     public bool IsRunning { get; private set; }
     public int Port { get; private set; }
@@ -36,13 +46,21 @@ public class UdpStreamServer : IStreamServer
         Port = port;
         _cts = new CancellationTokenSource();
 
-        _udpServer = new UdpClient(port);
-
-        _udpServer.Client.SendBufferSize = 2 * 1024 * 1024; // 2MB
+        _udpServer = new UdpClient(port)
+        {
+            DontFragment = true
+        };
+        _udpServer.Client.SendBufferSize = 2 * 1024 * 1024;
         _udpServer.Client.ReceiveBufferSize = 256 * 1024;
-        _udpServer.DontFragment = true;
+
+        _sendChannel = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
 
         _listenerTask = Task.Run(() => ListenForClients(_cts.Token));
+        _senderTask = Task.Run(() => SendLoop(_cts.Token));
 
         IsRunning = true;
     }
@@ -52,14 +70,15 @@ public class UdpStreamServer : IStreamServer
         if (!IsRunning) return;
 
         _cts?.Cancel();
+        _sendChannel?.Writer.TryComplete();
         _udpServer?.Close();
-
         _encoder?.Dispose();
-        _encoder = null;
 
         _cts = null;
         _udpServer = null;
         _clientEndpoint = null;
+        _sendChannel = null;
+        _encoder = null;
 
         IsRunning = false;
     }
@@ -70,14 +89,32 @@ public class UdpStreamServer : IStreamServer
         _monitorX = monitorX;
         _monitorY = monitorY;
         _screenCapture.TextureCaptured += OnTextureCaptured;
-
-        _screenCapture.CursorMoved += OnCursorMoved;
     }
 
     private void OnTextureCaptured(object? sender, TextureCapturedEventArgs e)
     {
-        if (_clientEndpoint == null || _udpServer == null)
+        if (_clientEndpoint == null || _sendChannel == null) return;
+
+        // cursor-only
+        if (e.TexturePtr == 0)
         {
+            if (_lastWidth == 0 || _lastHeight == 0) return; // no frame size yet
+
+            try
+            {
+                var (cx, cy, cursorType) = MonitorHelper.GetCursorInfo(_monitorX, _monitorY, _lastWidth, _lastHeight);
+                var seq = Interlocked.Increment(ref _sequenceNumber) - 1;
+                var packet = BuildPacket(
+                    ReadOnlySpan<byte>.Empty,
+                    (uint)seq,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    _lastWidth, _lastHeight,
+                    0, 1, 0,
+                    cx, cy, cursorType);
+                _sendChannel.Writer.TryWrite(packet);
+            }
+            catch { }
+
             return;
         }
 
@@ -86,20 +123,16 @@ public class UdpStreamServer : IStreamServer
             _lastWidth = e.Width;
             _lastHeight = e.Height;
 
-            if (_encoder == null)
-            {
-                _encoder = new NvencH265Encoder(e.DevicePtr, e.Width, e.Height, bitrate: 15_000_000);
-            }
+            _encoder ??= new NvencH265Encoder(e.DevicePtr, e.Width, e.Height, bitrate: Bitrate);
 
             var result = _encoder.EncodeTexture(e.TexturePtr);
             if (result == null) return;
 
             var (buffer, length, frameNumber) = result.Value;
-
             try
             {
                 var (cx, cy, cursorType) = MonitorHelper.GetCursorInfo(_monitorX, _monitorY, e.Width, e.Height);
-                SendH265Frame(buffer, length, e.Width, e.Height, frameNumber, cx, cy, cursorType);
+                EnqueueFrame(buffer, length, e.Width, e.Height, frameNumber, cx, cy, cursorType);
             }
             finally
             {
@@ -112,34 +145,15 @@ public class UdpStreamServer : IStreamServer
         }
     }
 
-    private void OnCursorMoved(object? sender, CursorMovedEventArgs e)
-    {
-        if (_clientEndpoint == null || _udpServer == null)
-            return;
-
-        try
-        {
-            var (cx, cy, cursorType) = MonitorHelper.GetCursorInfo(_monitorX, _monitorY, _lastWidth, _lastHeight);
-
-            var seq = _sequenceNumber++;
-            var packet = StreamPacket.CreateCursorPacket(seq, cx, cy, cursorType, _lastWidth, _lastHeight, frameNumber: 0);
-            var data = packet.ToBytes();
-            _udpServer.Send(data, data.Length, _clientEndpoint);
-        }
-        catch { }
-    }
-
-    private void SendH265Frame(
-        byte[] h265Data, 
-        int length, 
-        int width, int height, 
-        uint frameNumber, 
-        short cursorX, 
-        short cursorY,
+    private void EnqueueFrame(
+        byte[] h265Data, int length,
+        int width, int height,
+        uint frameNumber,
+        short cursorX, short cursorY,
         CursorType cursorType)
     {
         var totalFragments = (ushort)Math.Ceiling((double)length / MaxUdpPayload);
-        var seqNum = _sequenceNumber++;
+        var seq = (uint)(Interlocked.Increment(ref _sequenceNumber) - 1);
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         for (ushort i = 0; i < totalFragments; i++)
@@ -147,94 +161,78 @@ public class UdpStreamServer : IStreamServer
             var offset = i * MaxUdpPayload;
             var payloadSize = Math.Min(MaxUdpPayload, length - offset);
 
-            var packet = CreatePacketSpan(
+            var packet = BuildPacket(
                 h265Data.AsSpan(offset, payloadSize),
-                seqNum,
-                timestamp,
-                width,
-                height,
-                i,
-                totalFragments,
+                seq, timestamp,
+                width, height,
+                i, totalFragments,
                 frameNumber,
                 cursorX, cursorY,
-                cursorType
-            );
+                cursorType);
 
-            _udpServer!.Send(packet, packet.Length, _clientEndpoint!);
+            _sendChannel!.Writer.TryWrite(packet);
         }
     }
 
-    private byte[] CreatePacketSpan(
-    ReadOnlySpan<byte> payload,
-    uint sequenceNumber,
-    long timestamp,
-    int width,
-    int height,
-    ushort fragmentIndex,
-    ushort totalFragments,
-    uint frameNumber,
-    short cursorX, short cursorY,
-    CursorType cursorType)
+    private static byte[] BuildPacket(
+        ReadOnlySpan<byte> payload,
+        uint sequenceNumber, long timestamp,
+        int width, int height,
+        ushort fragmentIndex, ushort totalFragments,
+        uint frameNumber,
+        short cursorX, short cursorY,
+        CursorType cursorType)
     {
-        var packetSize = 50 + payload.Length;
-        var packet = ArrayPool<byte>.Shared.Rent(packetSize);
+        var packetSize = HeaderSize + payload.Length;
+        var rented = ArrayPool<byte>.Shared.Rent(packetSize);
 
         try
         {
-            var span = packet.AsSpan(0, packetSize);
-            var offset = 0;
+            var span = rented.AsSpan(0, packetSize);
+            var o = 0;
 
-            span[offset++] = (byte)(totalFragments > 1 ? 2 : 1);
+            span[o++] = (byte)PacketType.VideoFrame;
+            BitConverter.TryWriteBytes(span.Slice(o, 4), sequenceNumber); o += 4;
+            BitConverter.TryWriteBytes(span.Slice(o, 8), timestamp); o += 8;
+            BitConverter.TryWriteBytes(span.Slice(o, 4), width); o += 4;
+            BitConverter.TryWriteBytes(span.Slice(o, 4), height); o += 4;
+            BitConverter.TryWriteBytes(span.Slice(o, 2), fragmentIndex); o += 2;
+            BitConverter.TryWriteBytes(span.Slice(o, 2), totalFragments); o += 2;
+            BitConverter.TryWriteBytes(span.Slice(o, 4), frameNumber); o += 4;
+            BitConverter.TryWriteBytes(span.Slice(o, 2), cursorX); o += 2;
+            BitConverter.TryWriteBytes(span.Slice(o, 2), cursorY); o += 2;
+            span[o] = (byte)cursorType;
 
-            // 4 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 4), sequenceNumber);
-            offset += 4;
+            payload.CopyTo(span.Slice(HeaderSize));
 
-            // 8 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 8), timestamp);
-            offset += 8;
-
-            // 4 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 4), width);
-            offset += 4;
-
-            // 4 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 4), height);
-            offset += 4;
-
-            // 2 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 2), fragmentIndex);
-            offset += 2;
-
-            // 2 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 2), totalFragments);
-            offset += 2;
-
-            // 4 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 4), frameNumber);
-            offset += 4;
-
-            // 2 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 2), cursorX);
-            offset += 2;
-
-            // 2 bytes
-            BitConverter.TryWriteBytes(span.Slice(offset, 2), cursorY);
-            offset += 2;
-
-            // cursor type
-            span[offset] = (byte)cursorType;
-
-            // padding
-            offset = 50;
-
-            payload.CopyTo(span.Slice(offset));
-            var finalPacket = span.ToArray();
-            return finalPacket;
+            return span.ToArray();
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(packet);
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
+    private void SendLoop(CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var nextSendTick = sw.ElapsedTicks;
+
+        while (!ct.IsCancellationRequested)
+        {
+            if (!_sendChannel!.Reader.TryRead(out var packet))
+            {
+                Thread.SpinWait(10);
+                continue;
+            }
+
+            while (sw.ElapsedTicks < nextSendTick)
+                Thread.SpinWait(1);
+
+            try { _udpServer?.Send(packet, packet.Length, _clientEndpoint); }
+            catch { }
+
+            nextSendTick += PacingIntervalTicks;
         }
     }
 
@@ -247,25 +245,21 @@ public class UdpStreamServer : IStreamServer
                 var result = await _udpServer.ReceiveAsync(ct);
                 var packet = StreamPacket.FromBytes(result.Buffer);
 
-                if (packet?.Type == PacketType.ConnectionRequest)
-                {
-                    _clientEndpoint = result.RemoteEndPoint;
-                    _encoder?.ForceNextIDR();
-                    Console.WriteLine($"Client connected from {_clientEndpoint}");
+                if (packet?.Type != PacketType.ConnectionRequest) continue;
 
-                    var response = new StreamPacket
-                    {
-                        Type = PacketType.ConnectionResponse,
-                        Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    };
-                    var data = response.ToBytes();
-                    await _udpServer.SendAsync(data, data.Length, _clientEndpoint);
-                }
+                _clientEndpoint = result.RemoteEndPoint;
+                _encoder?.ForceNextIDR();
+                Console.WriteLine($"Client connected from {_clientEndpoint}");
+
+                var response = new StreamPacket
+                {
+                    Type = PacketType.ConnectionResponse,
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+                var data = response.ToBytes();
+                await _udpServer.SendAsync(data, data.Length, _clientEndpoint);
             }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+            catch (OperationCanceledException) { break; }
             catch { }
         }
     }
