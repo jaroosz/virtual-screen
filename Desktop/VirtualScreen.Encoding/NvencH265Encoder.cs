@@ -91,7 +91,7 @@ public unsafe class NvencH265Encoder : IDisposable
             config.frameIntervalP = 1;
 
             // HEVC specific configuration
-            config.encodeCodecConfig.hevcConfig.idrPeriod = 60;
+            config.encodeCodecConfig.hevcConfig.idrPeriod = 30;
             config.encodeCodecConfig.hevcConfig.repeatSPSPPS = 1;
             config.encodeCodecConfig.hevcConfig.outputAUD = 1;
             config.encodeCodecConfig.hevcConfig.enableLTR = 0;
@@ -214,7 +214,7 @@ public unsafe class NvencH265Encoder : IDisposable
             picParams.completionEvent = null;
             picParams.pictureStruct = NV_ENC_PIC_STRUCT.NV_ENC_PIC_STRUCT_FRAME;
 
-            if (_frameIndex == 0 || _forceNextIDR)
+            if (_frameIndex == 0 || _forceNextIDR || (_frameIndex % 30) == 0)
             {
                 picParams.pictureType = NV_ENC_PIC_TYPE.NV_ENC_PIC_TYPE_IDR;
                 _forceNextIDR = false;

@@ -21,6 +21,9 @@ public class UdpStreamServer : IStreamServer
     private NvencH265Encoder? _encoder;
     private IScreenCapture? _screenCapture;
 
+    private int _lastWidth;
+    private int _lastHeight;
+
     private const int MaxUdpPayload = 1400; // MTU 1500 - 100 bytes
 
     public bool IsRunning { get; private set; }
@@ -67,6 +70,8 @@ public class UdpStreamServer : IStreamServer
         _monitorX = monitorX;
         _monitorY = monitorY;
         _screenCapture.TextureCaptured += OnTextureCaptured;
+
+        _screenCapture.CursorMoved += OnCursorMoved;
     }
 
     private void OnTextureCaptured(object? sender, TextureCapturedEventArgs e)
@@ -78,6 +83,9 @@ public class UdpStreamServer : IStreamServer
 
         try
         {
+            _lastWidth = e.Width;
+            _lastHeight = e.Height;
+
             if (_encoder == null)
             {
                 _encoder = new NvencH265Encoder(e.DevicePtr, e.Width, e.Height, bitrate: 15_000_000);
@@ -102,6 +110,23 @@ public class UdpStreamServer : IStreamServer
         {
             Console.WriteLine($"Encode/Send error: {ex.Message}");
         }
+    }
+
+    private void OnCursorMoved(object? sender, CursorMovedEventArgs e)
+    {
+        if (_clientEndpoint == null || _udpServer == null)
+            return;
+
+        try
+        {
+            var (cx, cy, cursorType) = MonitorHelper.GetCursorInfo(_monitorX, _monitorY, _lastWidth, _lastHeight);
+
+            var seq = _sequenceNumber++;
+            var packet = StreamPacket.CreateCursorPacket(seq, cx, cy, cursorType, _lastWidth, _lastHeight, frameNumber: 0);
+            var data = packet.ToBytes();
+            _udpServer.Send(data, data.Length, _clientEndpoint);
+        }
+        catch { }
     }
 
     private void SendH265Frame(

@@ -11,6 +11,9 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
     public bool IsCapturing { get; private set; }
 
     public event EventHandler<TextureCapturedEventArgs>? TextureCaptured;
+    public event EventHandler<CursorMovedEventArgs>? CursorMoved;
+
+    private long _lastMouseUpdateTime;
 
     public void Start(string monitorDeviceName)
     {
@@ -101,12 +104,31 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
             try
             {
-                if (frameInfo.AccumulatedFrames == 0 || frameInfo.LastPresentTime == 0)
-                    continue;
+                try
+                {
+                    if (frameInfo.LastMouseUpdateTime != _lastMouseUpdateTime)
+                    {
+                        _lastMouseUpdateTime = frameInfo.LastMouseUpdateTime;
+
+                        var pos = frameInfo.PointerPosition;
+                        CursorMoved?.Invoke(this, new CursorMovedEventArgs
+                        {
+                            X = pos.X,
+                            Y = pos.Y,
+                            Visible = pos.Visible,
+                            Timestamp = DateTime.UtcNow
+                        });
+                    }
+                }
+                catch
+                {
+                    // swallow pointer-event errors so texture processing continues
+                }
 
                 if (desktopResource == IntPtr.Zero)
                     continue;
 
+                // texture present — process as before
                 var iidTex = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
                 Marshal.QueryInterface(desktopResource, ref iidTex, out var texturePtr);
                 Marshal.Release(desktopResource);
