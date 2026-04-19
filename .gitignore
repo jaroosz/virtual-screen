@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/Desktop/VirtualScreen.Driver/drivers
+/Desktop/VirtualScreen.Driver/VirtualScreen.Driver.csproj
+/Desktop/VirtualScreen.Core/VirtualScreen.Core.csproj

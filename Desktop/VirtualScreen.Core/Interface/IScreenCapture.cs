@@ -22,7 +22,6 @@ public class TextureCapturedEventArgs : EventArgs
     public int Height { get; init; }
 
     // cursor info
-    public bool CursorMoved { get; init; }
     public int CursorX { get; init; }
     public int CursorY { get; init; }
     public bool CursorVisible { get; init; }

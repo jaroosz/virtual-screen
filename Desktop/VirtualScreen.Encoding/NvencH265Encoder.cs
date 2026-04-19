@@ -12,6 +12,7 @@ public unsafe class NvencH265Encoder : IDisposable
     private void* _d3d11Device;
     private void* _bitstreamBuffer;
     private void* _registeredResource;
+    private void* _lastRegisteredTexture;
     private bool _initialized;
 
     private NV_ENCODE_API_FUNCTION_LIST* _apiPtr;

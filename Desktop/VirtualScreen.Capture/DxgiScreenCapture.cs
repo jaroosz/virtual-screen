@@ -7,26 +7,10 @@ namespace VirtualScreen.Capture;
 public class DxgiScreenCapture : IScreenCapture, IDisposable
 {
     private Thread? _captureThread;
-    private Thread? _emitThread;
     private CancellationTokenSource? _cts;
 
     public bool IsCapturing { get; private set; }
     public event EventHandler<TextureCapturedEventArgs>? TextureCaptured;
-
-    private volatile bool _pendingCursorChanged;
-    private int _pendingCursorX;
-    private int _pendingCursorY;
-    private volatile bool _pendingCursorVisible;
-    private long _lastMouseUpdateTime;
-
-    private readonly object _textureLock = new();
-    private PendingTexture? _latestTexture;
-
-    private record PendingTexture(
-        IntPtr TexturePtr,
-        IntPtr DevicePtr,
-        IntPtr ContextPtr,
-        int Width, int Height);
 
     public void Start(string monitorDeviceName)
     {
@@ -39,14 +23,7 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
             IsBackground = true
         };
 
-        _emitThread = new Thread(() => EmitLoop(_cts.Token))
-        {
-            IsBackground = true,
-            Priority = ThreadPriority.AboveNormal
-        };
-
         _captureThread.Start();
-        _emitThread.Start();
         IsCapturing = true;
     }
 
@@ -55,10 +32,8 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
         if (!IsCapturing) return;
         _cts?.Cancel();
         _captureThread?.Join(3000);
-        _emitThread?.Join(3000);
         _cts = null;
         _captureThread = null;
-        _emitThread = null;
         IsCapturing = false;
     }
 
@@ -112,125 +87,63 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
     private void RunFrameLoop(IntPtr duplication, IntPtr devicePtr, IntPtr contextPtr, CancellationToken token)
     {
+        long intervalTicks = Stopwatch.Frequency / 60L;
+        long nextTick = Stopwatch.GetTimestamp();
+
         while (!token.IsCancellationRequested)
         {
-            var hr = NativeDxgi.AcquireNextFrame(duplication, 34, out var frameInfo, out var desktopResource);
+            while (Stopwatch.GetTimestamp() < nextTick)
+                Thread.SpinWait(10);
+            nextTick += intervalTicks;
+
+            var hr = NativeDxgi.AcquireNextFrame(duplication, 0, out var frameInfo, out var desktopResource);
 
             if (hr == unchecked((int)0x887A0027)) continue;
-            if (hr != 0) break;
+            if (hr != 0)
+            {
+                Console.WriteLine($"[Capture] error: 0x{hr:X8}");
+                break;
+            }
 
             try
             {
-                if (frameInfo.LastMouseUpdateTime != _lastMouseUpdateTime)
-                {
-                    _lastMouseUpdateTime = frameInfo.LastMouseUpdateTime;
-                    var pos = frameInfo.PointerPosition;
-                    Interlocked.Exchange(ref _pendingCursorX, pos.X);
-                    Interlocked.Exchange(ref _pendingCursorY, pos.Y);
-                    _pendingCursorVisible = pos.Visible;
-                    _pendingCursorChanged = true;
-                }
+                var pos = frameInfo.PointerPosition;
+
+                IntPtr texturePtr = IntPtr.Zero;
+                int width = 0, height = 0;
 
                 if (desktopResource != IntPtr.Zero)
                 {
                     var iidTex = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
-                    Marshal.QueryInterface(desktopResource, ref iidTex, out var texturePtr);
-                    Marshal.Release(desktopResource);
-
+                    Marshal.QueryInterface(desktopResource, ref iidTex, out texturePtr);
                     if (texturePtr != IntPtr.Zero)
+                        NativeDxgi.GetTextureDesc(texturePtr, out width, out height);
+                }
+
+                try
+                {
+                    TextureCaptured?.Invoke(this, new TextureCapturedEventArgs
                     {
-                        NativeDxgi.GetTextureDesc(texturePtr, out var width, out var height);
-                        var next = new PendingTexture(texturePtr, devicePtr, contextPtr, width, height);
-
-                        PendingTexture? old;
-                        lock (_textureLock)
-                        {
-                            old = _latestTexture;
-                            _latestTexture = next;
-                        }
-
-                        if (old != null)
-                            Marshal.Release(old.TexturePtr);
-                    }
+                        TexturePtr = texturePtr,
+                        DevicePtr = devicePtr,
+                        ContextPtr = contextPtr,
+                        Width = width,
+                        Height = height,
+                        CursorX = pos.X,
+                        CursorY = pos.Y,
+                        CursorVisible = pos.Visible,
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
+                finally
+                {
+                    if (texturePtr != IntPtr.Zero)
+                        Marshal.Release(texturePtr);
                 }
             }
             finally
             {
                 NativeDxgi.ReleaseFrame(duplication);
-            }
-        }
-    }
-
-    private void EmitLoop(CancellationToken token)
-    {
-        long intervalTicks = Stopwatch.Frequency / 60L;
-        long nextTick = Stopwatch.GetTimestamp();
-
-        var sw = Stopwatch.StartNew();
-        //int frames = 0;
-
-        while (!token.IsCancellationRequested)
-        {
-            long now;
-            while ((now = Stopwatch.GetTimestamp()) < nextTick)
-                Thread.SpinWait(10);
-
-            nextTick += intervalTicks;
-
-            PendingTexture? texture;
-            lock (_textureLock)
-            {
-                texture = _latestTexture;
-                _latestTexture = null;
-            }
-
-            bool cursorChanged = _pendingCursorChanged;
-            int cursorX = _pendingCursorX;
-            int cursorY = _pendingCursorY;
-            bool cursorVisible = _pendingCursorVisible;
-            if (cursorChanged) _pendingCursorChanged = false;
-
-            if (texture == null && !cursorChanged)
-                continue;
-
-            if (texture != null)
-            {
-                if (texture.TexturePtr != IntPtr.Zero)
-                    Marshal.AddRef(texture.TexturePtr);
-                if (texture.DevicePtr != IntPtr.Zero)
-                    Marshal.AddRef(texture.DevicePtr);
-                if (texture.ContextPtr != IntPtr.Zero)
-                    Marshal.AddRef(texture.ContextPtr);
-            }
-
-            try
-            {
-                TextureCaptured?.Invoke(this, new TextureCapturedEventArgs
-                {
-                    TexturePtr = texture?.TexturePtr ?? 0,
-                    DevicePtr = texture?.DevicePtr ?? IntPtr.Zero,
-                    ContextPtr = texture?.ContextPtr ?? IntPtr.Zero,
-                    Width = texture?.Width ?? 0,
-                    Height = texture?.Height ?? 0,
-                    CursorMoved = cursorChanged,
-                    CursorX = cursorX,
-                    CursorY = cursorY,
-                    CursorVisible = cursorVisible,
-                    Timestamp = DateTime.UtcNow
-                });
-
-                //frames++;
-                //if (sw.ElapsedMilliseconds >= 1000)
-                //{
-                //    Console.WriteLine($"[Emit] FPS: {frames / (sw.ElapsedMilliseconds / 1000.0):F1}");
-                //    frames = 0;
-                //    sw.Restart();
-                //}
-            }
-            finally
-            {
-                if (texture != null)
-                    Marshal.Release(texture.TexturePtr);
             }
         }
     }
@@ -248,7 +161,6 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
             return result;
         }
 
-        // try without preferring NVIDIA
         result = TryFindAdapterOutput(factoryPtr, monitorDeviceName, preferNvidia: false);
         Marshal.Release(factoryPtr);
 
@@ -256,9 +168,9 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
     }
 
     private static (IntPtr output, IntPtr adapter) TryFindAdapterOutput(
-    IntPtr factoryPtr,
-    string? targetDeviceName,
-    bool preferNvidia)
+        IntPtr factoryPtr,
+        string? targetDeviceName,
+        bool preferNvidia)
     {
         uint adapterIndex = 0;
         while (true)
@@ -272,13 +184,11 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
 
             try
             {
-                // Get adapter description to check vendor
                 var adapterVtable = Marshal.ReadIntPtr(adapterPtr);
                 var getDescFn = Marshal.ReadIntPtr(adapterVtable, 8 * IntPtr.Size);
                 var getAdapterDesc = Marshal.GetDelegateForFunctionPointer<NativeDxgi.GetAdapterDescDelegate>(getDescFn);
                 getAdapterDesc(adapterPtr, out var adapterDesc);
 
-                // VendorId: 0x10DE = NVIDIA, 0x8086 = Intel, 0x1002 = AMD
                 bool isNvidia = adapterDesc.VendorId == 0x10DE;
 
                 if (preferNvidia && !isNvidia)
@@ -288,7 +198,6 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                     continue;
                 }
 
-                // Try to find the monitor on this adapter
                 uint outputIndex = 0;
                 while (true)
                 {
@@ -306,8 +215,8 @@ public class DxgiScreenCapture : IScreenCapture, IDisposable
                     var name = new string(outputDesc.DeviceName).TrimEnd('\0');
 
                     if (string.IsNullOrEmpty(targetDeviceName) ||
-                         name.Equals(targetDeviceName, StringComparison.OrdinalIgnoreCase) ||
-                         name.EndsWith(targetDeviceName, StringComparison.OrdinalIgnoreCase))
+                        name.Equals(targetDeviceName, StringComparison.OrdinalIgnoreCase) ||
+                        name.EndsWith(targetDeviceName, StringComparison.OrdinalIgnoreCase))
                     {
                         return (outputPtr, adapterPtr);
                     }
