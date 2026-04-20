@@ -24,7 +24,7 @@ public enum CursorType : byte
 
 public class StreamPacket
 {
-    private const int HeaderSize = 50;
+    public const int HeaderSize = 50;
 
     public PacketType Type { get; set; }
     public uint SequenceNumber { get; set; }

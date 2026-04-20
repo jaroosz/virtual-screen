@@ -19,7 +19,8 @@ var driverPath = Path.Combine(AppContext.BaseDirectory, "drivers");
 
 var controller = new AppController(
     new DriverManager(driverPath),
-    new DxgiScreenCapture(),
+    new WGCScreenCapture(),
+    // new DxgiScreenCapture(),
     new UdpStreamServer());
 
 var menu = new ConsoleMenu(controller, port);

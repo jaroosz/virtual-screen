@@ -38,7 +38,7 @@ public class ConsoleMenu
 
                 case '2':
                     if (!_controller.IsRunning)
-                        await SelectMonitorAsync();
+                        SelectMonitorAsync();
                     break;
 
                 case '3':
@@ -87,7 +87,7 @@ public class ConsoleMenu
         WriteLine("");
     }
 
-    private async Task SelectMonitorAsync()
+    private void SelectMonitorAsync()
     {
         Console.Clear();
         WriteLine("Select monitor:");
@@ -106,8 +106,6 @@ public class ConsoleMenu
         var input = Console.ReadLine();
         if (int.TryParse(input, out var index) && index >= 1 && index <= monitors.Count)
             _controller.SelectMonitor(monitors[index - 1].DeviceName);
-
-        await Task.CompletedTask;
     }
 
     private async Task ToggleVirtualMonitorAsync()

@@ -4,15 +4,14 @@ using static VirtualScreen.Encoding.NvEncodeAPI;
 namespace VirtualScreen.Encoding;
 
 /// <summary>
-/// NVIDIA NVENC H.265 encoder with D3D11 texture input.
+/// NVIDIA NVENC H.265/H.264 encoder with D3D11 texture input.
 /// </summary>
-public unsafe class NvencH265Encoder : IDisposable
+public unsafe class NvencEncoder : IDisposable
 {
     private void* _encoder;
     private void* _d3d11Device;
     private void* _bitstreamBuffer;
     private void* _registeredResource;
-    private void* _lastRegisteredTexture;
     private bool _initialized;
 
     private NV_ENCODE_API_FUNCTION_LIST* _apiPtr;
@@ -28,7 +27,7 @@ public unsafe class NvencH265Encoder : IDisposable
 
     public void ForceNextIDR() => _forceNextIDR = true;
 
-    public NvencH265Encoder(IntPtr d3d11Device, int width, int height, int bitrate = 15_000_000)
+    public NvencEncoder(IntPtr d3d11Device, int width, int height, int bitrate = 15_000_000)
     {
         _d3d11Device = (void*)d3d11Device;
         _width = width;
@@ -160,10 +159,7 @@ public unsafe class NvencH265Encoder : IDisposable
     }
 
     /// <summary>
-    /// Encode a D3D11 Texture2D to H.265 bitstream (zero-copy, GPU-only path).
-    /// The texture must be created with D3D11_BIND_RENDER_TARGET or D3D11_BIND_SHADER_RESOURCE
-    /// and format DXGI_FORMAT_B8G8R8A8_UNORM (or ARGB equivalent).
-    /// 
+    /// Encode a D3D11 Texture2D to H.265/H.264 bitstream.
     /// CALLER must return the rented buffer: ArrayPool&lt;byte&gt;.Shared.Return(result.Buffer)
     /// </summary>
     public (byte[] Buffer, int Length, uint FrameNumber)? EncodeTexture(IntPtr d3d11Texture)

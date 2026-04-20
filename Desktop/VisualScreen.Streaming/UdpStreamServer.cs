@@ -16,11 +16,12 @@ public class UdpStreamServer : IStreamServer
     private CancellationTokenSource? _cts;
     private Task? _listenerTask;
     private Task? _senderTask;
+    private Task? _fpsReporterTask;
     private IPEndPoint? _clientEndpoint;
     private int _monitorX;
     private int _monitorY;
 
-    private NvencH265Encoder? _encoder;
+    private NvencEncoder? _encoder;
     private IScreenCapture? _screenCapture;
 
     private Channel<byte[]>? _sendChannel;
@@ -29,15 +30,19 @@ public class UdpStreamServer : IStreamServer
     private int _lastWidth;
     private int _lastHeight;
 
+    // FPS tracking
+    private long _framesEnqueued;
+    public int LastFps { get; private set; }
+
     private const int MaxUdpPayload = 1400;
     private const int Bitrate = 15_000_000;
-    private const int HeaderSize = 50;
 
     private static readonly long PacingIntervalTicks =
         (long)(Stopwatch.Frequency * (MaxUdpPayload * 8.0 / Bitrate) * 0.4);
 
     public bool IsRunning { get; private set; }
     public int Port { get; private set; }
+
 
     public void Start(int port)
     {
@@ -61,6 +66,7 @@ public class UdpStreamServer : IStreamServer
 
         _listenerTask = Task.Run(() => ListenForClients(_cts.Token));
         _senderTask = Task.Run(() => SendLoop(_cts.Token));
+        _fpsReporterTask = Task.Run(() => FpsReporter(_cts.Token));
 
         IsRunning = true;
     }
@@ -111,7 +117,8 @@ public class UdpStreamServer : IStreamServer
                     _lastWidth, _lastHeight,
                     0, 1, 0,
                     cx, cy, cursorType);
-                _sendChannel.Writer.TryWrite(packet);
+                if (_sendChannel.Writer.TryWrite(packet))
+                    Interlocked.Increment(ref _framesEnqueued); // count cursor-only "frame"
             }
             catch { }
 
@@ -123,7 +130,7 @@ public class UdpStreamServer : IStreamServer
             _lastWidth = e.Width;
             _lastHeight = e.Height;
 
-            _encoder ??= new NvencH265Encoder(e.DevicePtr, e.Width, e.Height, bitrate: Bitrate);
+            _encoder ??= new NvencEncoder(e.DevicePtr, e.Width, e.Height, bitrate: Bitrate);
 
             var result = _encoder.EncodeTexture(e.TexturePtr);
             if (result == null) return;
@@ -152,6 +159,9 @@ public class UdpStreamServer : IStreamServer
         short cursorX, short cursorY,
         CursorType cursorType)
     {
+        // count one frame for FPS (before fragmenting)
+        Interlocked.Increment(ref _framesEnqueued);
+
         var totalFragments = (ushort)Math.Ceiling((double)length / MaxUdpPayload);
         var seq = (uint)(Interlocked.Increment(ref _sequenceNumber) - 1);
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -183,7 +193,7 @@ public class UdpStreamServer : IStreamServer
         short cursorX, short cursorY,
         CursorType cursorType)
     {
-        var packetSize = HeaderSize + payload.Length;
+        var packetSize = StreamPacket.HeaderSize + payload.Length;
         var rented = ArrayPool<byte>.Shared.Rent(packetSize);
 
         try
@@ -203,7 +213,7 @@ public class UdpStreamServer : IStreamServer
             BitConverter.TryWriteBytes(span.Slice(o, 2), cursorY); o += 2;
             span[o] = (byte)cursorType;
 
-            payload.CopyTo(span.Slice(HeaderSize));
+            payload.CopyTo(span.Slice(StreamPacket.HeaderSize));
 
             return span.ToArray();
         }
@@ -234,6 +244,21 @@ public class UdpStreamServer : IStreamServer
 
             nextSendTick += PacingIntervalTicks;
         }
+    }
+
+    private async Task FpsReporter(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(1000, ct);
+                var frames = Interlocked.Exchange(ref _framesEnqueued, 0);
+                LastFps = (int)Math.Min(int.MaxValue, frames);
+                Console.WriteLine($"[FPS] Sent frames: {frames}/s");
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     private async Task ListenForClients(CancellationToken ct)
