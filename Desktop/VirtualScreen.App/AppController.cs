@@ -1,5 +1,6 @@
 ﻿using VirtualScreen.Core;
 using VirtualScreen.Core.Interface;
+using VirtualScreen.Encoding.Enums;
 using VirtualScreen.Streaming;
 
 namespace VirtualScreen.App;
@@ -156,6 +157,12 @@ public class AppController
         IsRunning = false;
 
         Emit(AppEventType.Success, "Streaming stopped.");
+    }
+
+    public void SetCodec(VideoCodec codec)
+    {
+        if (_streamServer is UdpStreamServer udpServer)
+            udpServer.SetCodec(codec);
     }
 
     private void Emit(AppEventType type, string message) =>

@@ -7,6 +7,7 @@ using VirtualScreen.Core;
 using VirtualScreen.Core.Interface;
 using VirtualScreen.Core.Protocol;
 using VirtualScreen.Encoding;
+using VirtualScreen.Encoding.Enums;
 
 namespace VirtualScreen.Streaming;
 
@@ -23,6 +24,7 @@ public class UdpStreamServer : IStreamServer
 
     private NvencEncoder? _encoder;
     private IScreenCapture? _screenCapture;
+    private VideoCodec _codec = VideoCodec.H265;
 
     private Channel<byte[]>? _sendChannel;
 
@@ -43,6 +45,14 @@ public class UdpStreamServer : IStreamServer
     public bool IsRunning { get; private set; }
     public int Port { get; private set; }
 
+    public void SetCodec(VideoCodec codec)
+    {
+        if (_codec == codec) return;
+
+        _codec = codec;
+        _encoder?.Dispose();
+        _encoder = null;
+    }
 
     public void Start(int port)
     {
@@ -130,7 +140,7 @@ public class UdpStreamServer : IStreamServer
             _lastWidth = e.Width;
             _lastHeight = e.Height;
 
-            _encoder ??= new NvencEncoder(e.DevicePtr, e.Width, e.Height, bitrate: Bitrate);
+            _encoder ??= new NvencEncoder(e.DevicePtr, e.Width, e.Height, _codec, Bitrate);
 
             var result = _encoder.EncodeTexture(e.TexturePtr);
             if (result == null) return;

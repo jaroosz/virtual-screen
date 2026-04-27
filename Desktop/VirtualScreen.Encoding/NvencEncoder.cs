@@ -1,4 +1,5 @@
 ﻿using System.Runtime.InteropServices;
+using VirtualScreen.Encoding.Enums;
 using static VirtualScreen.Encoding.NvEncodeAPI;
 
 namespace VirtualScreen.Encoding;
@@ -19,6 +20,7 @@ public unsafe class NvencEncoder : IDisposable
     private readonly int _width;
     private readonly int _height;
     private readonly int _bitrate;
+    private readonly VideoCodec _codec;
     private uint _frameIndex;
 
     private int _encodedFrameCount;
@@ -27,12 +29,17 @@ public unsafe class NvencEncoder : IDisposable
 
     public void ForceNextIDR() => _forceNextIDR = true;
 
-    public NvencEncoder(IntPtr d3d11Device, int width, int height, int bitrate = 15_000_000)
+    public NvencEncoder(
+        IntPtr d3d11Device, 
+        int width, int height, 
+        VideoCodec codec = VideoCodec.H265, 
+        int bitrate = 15_000_000)
     {
         _d3d11Device = (void*)d3d11Device;
         _width = width;
         _height = height;
         _bitrate = bitrate;
+        _codec = codec;
 
         Initialize();
     }
@@ -49,9 +56,6 @@ public unsafe class NvencEncoder : IDisposable
             var status = NvEncodeAPICreateInstance(_apiPtr);
             CheckStatus(status, "NvEncodeAPICreateInstance");
 
-            uint maxVer = 0;
-            NvEncodeAPIGetMaxSupportedVersion(&maxVer);
-
             var openParams = NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS.Create();
             openParams.deviceType = NV_ENC_DEVICE_TYPE.NV_ENC_DEVICE_TYPE_DIRECTX;
             openParams.device = _d3d11Device;
@@ -66,19 +70,21 @@ public unsafe class NvencEncoder : IDisposable
 
             var presetConfig = NV_ENC_PRESET_CONFIG.Create();
 
-            uint expectedPresetVersion = StructVersion(4);
-            uint expectedConfigVersion = StructVersion(8);
-            uint expectedRcVersion = StructVersion(1);
-
             var getPresetConfig = Marshal.GetDelegateForFunctionPointer<NvEncGetEncodePresetConfigEx>(
                 (IntPtr)_apiPtr->nvEncGetEncodePresetConfigEx);
 
-            GUID hevcGuid = GUID.HEVC;
+            GUID codecGuid = _codec switch
+            {
+                VideoCodec.H264 => GUID.H264,
+                VideoCodec.H265 => GUID.HEVC,
+                _ => GUID.HEVC
+            };
+
             GUID p1Guid = GUID.Preset_P1;
 
             status = getPresetConfig(
                 _encoder,
-                hevcGuid,
+                codecGuid,
                 p1Guid,
                 NV_ENC_TUNING_INFO.NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY,
                 &presetConfig);
@@ -107,7 +113,7 @@ public unsafe class NvencEncoder : IDisposable
             //config.rcParams.enableAQ = 1;
 
             var initParams = NV_ENC_INITIALIZE_PARAMS.Create();
-            initParams.encodeGUID = hevcGuid;
+            initParams.encodeGUID = codecGuid;
             initParams.presetGUID = p1Guid;
             initParams.encodeWidth = (uint)_width;
             initParams.encodeHeight = (uint)_height;
